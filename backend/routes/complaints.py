@@ -1,48 +1,46 @@
 # backend/routes/complaints.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
-from db import get_db
-from schemas import ComplaintCreate
-from services.geo_service import find_nearest_asset
-from services.gemini_service import classify_complaint
-from services.rule_engine import rule_classify
 from sqlalchemy import text
+from db import get_db
+from schemas import ComplaintCreate, ComplaintResponse, TokenData
+from dependencies import get_current_user
+from models import Complaint
+from agents.routing_agent import run_routing_agent
 
-router = APIRouter(prefix="/complaints")
+router = APIRouter(prefix="/api/complaints", tags=["Complaints"])
 
-@router.post("/")
-def create_complaint(data: ComplaintCreate, db: Session = Depends(get_db)):
-
-    asset = find_nearest_asset(db, data.lat, data.lng)
-
-    rule_result = rule_classify(data.text)
-
-    ai_result = classify_complaint(data.text)
-
-    department_id = ai_result.get("department_id")
-
-    query = text("""
-        INSERT INTO complaints (user_id,text,location,asset_id,department_id)
-        VALUES (
-            :user_id,
-            :text,
-            ST_SetSRID(ST_MakePoint(:lng,:lat),4326),
-            :asset_id,
-            :department_id
-        )
-        RETURNING id
-    """)
-
-    result = db.execute(query,{
-        "user_id":data.user_id,
-        "text":data.text,
-        "lng":data.lng,
-        "lat":data.lat,
-        "asset_id":asset,
-        "department_id":department_id
-    })
-
-    complaint_id = result.fetchone()[0]
+@router.post("/", response_model=ComplaintResponse)
+def create_complaint(
+    data: ComplaintCreate, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user) # JWT Auth injected here
+):
+    # 1. Insert Raw Complaint (NEW Status)
+    point_wkt = f"SRID=4326;POINT({data.lng} {data.lat})"
+    
+    new_complaint = Complaint(
+        user_id=current_user.user_id,
+        text=data.text,
+        location=point_wkt,
+        status='NEW'
+    )
+    db.add(new_complaint)
     db.commit()
+    db.refresh(new_complaint)
 
-    return {"complaint_id":complaint_id}
+    # 2. Trigger LangGraph Orchestrator Asynchronously
+    background_tasks.add_task(
+        run_routing_agent, 
+        complaint_id=new_complaint.id, 
+        text=data.text, 
+        lat=data.lat, 
+        lng=data.lng
+    )
+
+    return ComplaintResponse(
+        id=new_complaint.id, 
+        status="NEW", 
+        message="Complaint received. AI Routing Agent activated."
+    )
