@@ -5,7 +5,10 @@ from routes import complaints,task,analytics,ws,dashboard,assistant
 from db import Base, engine
 from routes import surveys
 
+from services.predictive_service import predictive_loop
+import threading
 
+threading.Thread(target=predictive_loop, daemon=True).start()
 # Ensure tables are created (though you already ran the raw SQL, this is good practice)
 Base.metadata.create_all(bind=engine)
 

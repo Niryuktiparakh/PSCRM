@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM
 from sqlalchemy.sql import func
 from geoalchemy2 import Geography
 from db import Base
-
+from pgvector.sqlalchemy import Vector
 
 # ---------------- ENUM TYPES ---------------- #
 
@@ -309,4 +309,5 @@ class ComplaintEmbedding(Base):
     complaint_id = Column(Integer, ForeignKey("complaints.id"))
 
     # FIX: Uses SQLAlchemy's Float instead of Python's built-in float
-    embedding = Column(ARRAY(Float))
+    
+    embedding = Column(Vector(768))
