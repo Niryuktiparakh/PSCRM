@@ -1,46 +1,32 @@
 # backend/routes/complaints.py
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from db import get_db
 from schemas import ComplaintCreate, ComplaintResponse, TokenData
 from dependencies import get_current_user
-from models import Complaint
-from agents.routing_agent import run_routing_agent
+from services.complaint_service import create_complaint
 
 router = APIRouter(prefix="/api/complaints", tags=["Complaints"])
 
+
 @router.post("/", response_model=ComplaintResponse)
-def create_complaint(
-    data: ComplaintCreate, 
-    background_tasks: BackgroundTasks,
+def create_new_complaint(
+    data: ComplaintCreate,
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_current_user) # JWT Auth injected here
+    current_user: TokenData = Depends(get_current_user)
 ):
-    # 1. Insert Raw Complaint (NEW Status)
-    point_wkt = f"SRID=4326;POINT({data.lng} {data.lat})"
-    
-    new_complaint = Complaint(
+
+    complaint = create_complaint(
+        db=db,
         user_id=current_user.user_id,
         text=data.text,
-        location=point_wkt,
-        status='NEW'
-    )
-    db.add(new_complaint)
-    db.commit()
-    db.refresh(new_complaint)
-
-    # 2. Trigger LangGraph Orchestrator Asynchronously
-    background_tasks.add_task(
-        run_routing_agent, 
-        complaint_id=new_complaint.id, 
-        text=data.text, 
-        lat=data.lat, 
-        lng=data.lng
+        lat=data.lat,
+        lng=data.lng,
+        photo_url=data.photo_url
     )
 
     return ComplaintResponse(
-        id=new_complaint.id, 
-        status="NEW", 
-        message="Complaint received. AI Routing Agent activated."
+        id=complaint.id,
+        status=complaint.status,
+        message="Complaint received. Routing agent activated."
     )
