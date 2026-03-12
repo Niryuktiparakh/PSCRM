@@ -5,31 +5,11 @@ from services.realtime_service import broadcast_event
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from models import Complaint, WorkflowEvent, Notification
-from agents.routing_agent import run_routing_agent
-
-
-def detect_zone(db: Session, lat: float, lng: float):
-    """
-    Finds which zone the complaint belongs to using spatial containment.
-    """
-
-    query = text("""
-        SELECT id
-        FROM zones
-        WHERE ST_Contains(
-            boundary,
-            ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography
-        )
-        LIMIT 1
-    """)
-
-    result = db.execute(query, {"lat": lat, "lng": lng}).fetchone()
-
-    if result:
-        return result[0]
-
-    return None
-
+from services.notification_service import create_notification
+from services.infrastructure_service import detect_zone
+from services.embedding_service import create_complaint_embedding
+from services.image_service import analyze_complaint_image
+from agents.orchestrator import run_civic_workflow
 
 def create_workflow_event(
     db: Session,
@@ -84,8 +64,13 @@ def create_complaint(
     db.add(complaint)
     db.commit()
     db.refresh(complaint)
+    
+    create_complaint_embedding(db, complaint.id, text)
 
-    # Log event
+    if photo_url:
+        image_data = analyze_complaint_image(photo_url, text)
+
+        # Log event
     create_workflow_event(
         db,
         complaint.id,
@@ -121,7 +106,7 @@ def create_complaint(
 )
 
     # Trigger routing agent (async style)
-    run_routing_agent(
+    run_civic_workflow(
         complaint_id=complaint.id,
         text=text,
         lat=lat,
