@@ -1,4 +1,7 @@
 # backend/services/task_service.py
+import asyncio
+
+from services.realtime_service import broadcast_event
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from models import Task, Complaint, Contractor, WorkflowEvent, Notification
@@ -114,6 +117,19 @@ def create_task_for_complaint(db: Session, complaint_id: int):
 
     db.commit()
     db.refresh(task)
+    
+    asyncio.create_task(
+
+    broadcast_event({
+
+        "type": "task_created",
+
+        "data": {
+            "task_id": task.id,
+        }
+
+    })
+)
 
     return task
 
@@ -164,5 +180,19 @@ def update_task_status(db: Session, task_id: int, new_status: str, employee_id=N
     )
 
     db.commit()
+    
+    asyncio.create_task(
+
+    broadcast_event({
+
+        "type": "task_update",
+
+        "data": {
+            "task_id": task.id,
+            "status": new_status
+        }
+
+    })
+)
 
     return task

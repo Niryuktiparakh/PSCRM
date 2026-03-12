@@ -1,4 +1,7 @@
 # backend/services/complaint_service.py
+import asyncio
+
+from services.realtime_service import broadcast_event
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from models import Complaint, WorkflowEvent, Notification
@@ -119,6 +122,22 @@ def create_complaint(
     )
 
     db.commit()
+    
+    asyncio.create_task(
+
+    broadcast_event({
+
+        "type": "complaint_created",
+
+        "data": {
+            "complaint_id": complaint.id,
+            "lat": lat,
+            "lng": lng,
+            "status": complaint.status
+        }
+
+    })
+)
 
     # Trigger routing agent (async style)
     run_routing_agent(
