@@ -1,7 +1,7 @@
 # backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import complaints,task,analytics,ws
+from routes import complaints,task,analytics,ws,dashboard
 from db import Base, engine
 
 # Ensure tables are created (though you already ran the raw SQL, this is good practice)
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(ws.router)
 app.include_router(complaints.router)
 app.include_router(task.router)
+app.include_router(dashboard.router)
 app.include_router(analytics.router)
 @app.get("/")
 def root():

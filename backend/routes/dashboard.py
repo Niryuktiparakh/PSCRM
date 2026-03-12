@@ -19,3 +19,5 @@ def dashboard(
     data = get_dashboard_data(db, user)
 
     return data
+
+

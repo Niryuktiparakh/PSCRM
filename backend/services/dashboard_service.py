@@ -108,3 +108,32 @@ def citizen_dashboard(db: Session, user: TokenData):
         "total_complaints": row[0],
         "resolved": row[1]
     }
+    
+    
+def get_zone_complaints(db: Session, user: TokenData):
+
+    query = text("""
+        SELECT
+        id,
+        text,
+        status,
+        ST_X(location::geometry) as lng,
+        ST_Y(location::geometry) as lat
+        FROM complaints
+        WHERE zone_id = (
+            SELECT zone_id FROM users WHERE id=:uid
+        )
+    """)
+
+    rows = db.execute(query, {"uid": str(user.user_id)}).fetchall()
+
+    return [
+        {
+            "id": r[0],
+            "text": r[1],
+            "status": r[2],
+            "lng": r[3],
+            "lat": r[4]
+        }
+        for r in rows
+    ]
