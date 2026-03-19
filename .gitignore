@@ -52,8 +52,3 @@ backend/data/embeddings/
 *.temp
 
 
-*.env
-8.pycache__/
-*.py[cod]
-*.pyc
-*.py
