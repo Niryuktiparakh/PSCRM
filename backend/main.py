@@ -1,16 +1,9 @@
 # backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import complaints,task,analytics,ws,dashboard,assistant
-from db import Base, engine
+from routes import task,analytics,ws,dashboard,assistant
+from routes import complaint_router, auth_router
 from routes import surveys
-
-from services.predictive_service import predictive_loop
-import threading
-
-threading.Thread(target=predictive_loop, daemon=True).start()
-# Ensure tables are created (though you already ran the raw SQL, this is good practice)
-Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(
@@ -29,7 +22,8 @@ app.add_middleware(
 
 
 app.include_router(ws.router)
-app.include_router(complaints.router)
+app.include_router(complaint_router.router)
+app.include_router(auth_router.router)
 app.include_router(task.router)
 app.include_router(dashboard.router)
 app.include_router(analytics.router)

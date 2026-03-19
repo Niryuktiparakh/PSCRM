@@ -1,19 +1,18 @@
-#backend/db.py
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from config import settings
 
-# Supabase connection pooler compatibility
 engine = create_engine(
-    settings.DATABASE_URL.replace("postgres://", "postgresql://"),
+    settings.DATABASE_URL,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+class Base(DeclarativeBase):
+    pass
 
 def get_db():
     db = SessionLocal()

@@ -1,117 +1,91 @@
-# backend/services/complaint_service.py
-import asyncio
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from services.realtime_service import broadcast_event
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from models import Complaint, WorkflowEvent, Notification
-from services.notification_service import create_notification
-from services.infrastructure_service import detect_zone
-from services.embedding_service import create_complaint_embedding
-from services.image_service import analyze_complaint_image
-from agents.orchestrator import run_civic_workflow
+from services.embedding_service import create_image_embedding_vector, create_text_embedding_vector
 
-def create_workflow_event(
-    db: Session,
-    complaint_id: int,
-    event_type: str,
-    agent_name: str,
-    payload: dict = None
-):
-    """
-    Logs workflow events so we can visualize system behavior.
-    """
-
-    event = WorkflowEvent(
-        complaint_id=complaint_id,
-        event_type=event_type,
-        agent_name=agent_name,
-        payload=payload
-    )
-
-    db.add(event)
+BASE_DIR = Path(__file__).resolve().parents[1]
+COMPLAINTS_DIR = BASE_DIR / "data" / "complaints"
+EMBEDDINGS_DIR = BASE_DIR / "data" / "embeddings"
 
 
-def create_complaint(
-    db: Session,
-    user_id,
+def _ensure_data_dirs() -> None:
+    COMPLAINTS_DIR.mkdir(parents=True, exist_ok=True)
+    EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=True)
+
+
+def build_and_store_complaint(
     text: str,
+    image_bytes: bytes,
+    image_content_type: str,
+    image_url: str,
     lat: float,
     lng: float,
-    photo_url: str = None
-):
-    """
-    Main complaint ingestion logic.
-    """
+) -> Dict[str, Any]:
+    """Store complaint as JSON without DB/LLM classification dependencies."""
+    _ensure_data_dirs()
 
-    # Convert location to PostGIS format
-    point_wkt = f"SRID=4326;POINT({lng} {lat})"
+    complaint_id = str(uuid.uuid4())
 
-    # Detect zone
-    zone_id = detect_zone(db, lat, lng)
-    
-    
+    complaint_payload: Dict[str, Any] = {
+        "complaint_id": complaint_id,
+        "text": text.strip(),
+        "image_url": image_url,
+        "image_content_type": image_content_type,
+        "image_size_bytes": len(image_bytes),
+        "lat": lat,
+        "lng": lng,
+        "status": "INGESTED",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-    complaint = Complaint(
-        user_id=user_id,
-        text=text,
-        location=point_wkt,
-        photo_url=photo_url,
-        status="NEW",
-        zone_id=zone_id
-    )
+    _write_json(COMPLAINTS_DIR / f"{complaint_id}.json", complaint_payload)
+    return complaint_payload
 
-    db.add(complaint)
-    db.commit()
-    db.refresh(complaint)
-    
-    create_complaint_embedding(db, complaint.id, text)
 
-    if photo_url:
-        image_data = analyze_complaint_image(photo_url, text)
+def get_complaint_by_id(complaint_id: str) -> Optional[Dict[str, Any]]:
+    _ensure_data_dirs()
+    path = COMPLAINTS_DIR / f"{complaint_id}.json"
+    if not path.exists():
+        return None
 
-        # Log event
-    create_workflow_event(
-        db,
-        complaint.id,
-        "COMPLAINT_RECEIVED",
-        "ComplaintService"
-    )
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
-    # Notify citizen
-    create_notification(
-        db,
-        user_id,
-        "Your complaint has been registered and is being processed.",
-        "complaint_created",
-        {"complaint_id": complaint.id}
-    )
 
-    db.commit()
-    
-    asyncio.create_task(
+def run_embedding_background_task(complaint_id: str, text: str, image_url: str) -> None:
+    """Generate text and image embeddings in background and persist sidecar JSON."""
 
-    broadcast_event({
+    _ensure_data_dirs()
 
-        "type": "complaint_created",
+    try:
+        text_embedding = create_text_embedding_vector(text)
+        image_embedding = create_image_embedding_vector(image_url)
 
-        "data": {
-            "complaint_id": complaint.id,
-            "lat": lat,
-            "lng": lng,
-            "status": complaint.status
+        payload: Dict[str, Any] = {
+            "complaint_id": complaint_id,
+            "status": "COMPLETED",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "text_embedding": text_embedding,
+            "image_embedding": image_embedding,
         }
 
-    })
-)
-
-    # Trigger routing agent (async style)
-    run_civic_workflow(
-        complaint_id=complaint.id,
-        text=text,
-        lat=lat,
-        lng=lng
-    )
-
-    return complaint
-
+        _write_json(EMBEDDINGS_DIR / f"{complaint_id}.json", payload)
+    except Exception as exc:
+        _write_json(
+            EMBEDDINGS_DIR / f"{complaint_id}.json",
+            {
+                "complaint_id": complaint_id,
+                "status": "FAILED",
+                "error": str(exc),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
