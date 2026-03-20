@@ -4,7 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
 import { submitComplaint } from "../api/complaintsApi";
-import PageShell from "../components/PageShell";
+import AppLayout from "../components/AppLayout";
 
 const markerIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -27,7 +27,9 @@ function LocationPicker({ lat, lng, setLat, setLng }) {
     }
   }, [lat, lng, map]);
 
-  return lat !== null && lng !== null ? <Marker position={[lat, lng]} icon={markerIcon} /> : null;
+  return lat !== null && lng !== null ? (
+    <Marker position={[lat, lng]} icon={markerIcon} />
+  ) : null;
 }
 
 export default function SubmitComplaintPage() {
@@ -63,19 +65,13 @@ export default function SubmitComplaintPage() {
       () => {
         setLocationStatus("GPS failed or denied. Pin on map.");
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
   useEffect(() => {
     requestCurrentLocation();
-    return () => {
-      stopCamera();
-    };
+    return () => stopCamera();
   }, []);
 
   useEffect(() => {
@@ -89,10 +85,10 @@ export default function SubmitComplaintPage() {
     setImage(null);
     setImagePreview(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+      if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (err) {
       console.error(err);
       setError("Webcam access denied or unavailable.");
@@ -102,8 +98,7 @@ export default function SubmitComplaintPage() {
 
   const stopCamera = () => {
     if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject.getTracks().forEach((t) => t.stop());
     }
     setIsCameraActive(false);
   };
@@ -114,9 +109,7 @@ export default function SubmitComplaintPage() {
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], "webcam_photo.jpg", { type: "image/jpeg" });
@@ -144,25 +137,17 @@ export default function SubmitComplaintPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-
     if (!image) {
       setError("Please take a photo or upload an image.");
       return;
     }
-
     if (lat === null || lng === null) {
       setError("Location is required. Allow GPS or pin on map.");
       return;
     }
-
     setIsSubmitting(true);
     try {
-      const complaint = await submitComplaint({
-        text: text || "Issue observed at location",
-        lat,
-        lng,
-        image,
-      });
+      const complaint = await submitComplaint({ text: text || "Issue observed at location", lat, lng, image });
       navigate(`/complaints/${complaint.complaint_id}`);
     } catch (err) {
       setError(err.response?.data?.detail || "Complaint submission failed");
@@ -172,81 +157,72 @@ export default function SubmitComplaintPage() {
   };
 
   return (
-    <PageShell title="">
-      <form onSubmit={handleSubmit} className="wireframe-form">
-        <div className="top-panels">
+    <AppLayout title="Report Issue">
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-[900px]">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-2 text-xs text-on-surface-variant font-medium">
+          <span>Dashboard</span>
+          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+          <span className="text-primary font-bold">Report Issue</span>
+        </nav>
+
+        <h3 className="font-headline font-bold text-xl text-on-surface">
+          Report a New Civic Issue
+        </h3>
+
+        {/* Two-panel grid: Photo + Map */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Photo Panel */}
-          <div className="panel-card">
-            {isCameraActive ? (
-              <>
-                <video ref={videoRef} autoPlay playsInline muted className="video-preview" />
-                <div className="camera-controls">
-                  <button type="button" onClick={capturePhoto} className="camera-btn">
-                    Capture
-                  </button>
-                  <button type="button" onClick={stopCamera} className="camera-btn" style={{ background: "#9ca3af" }}>
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : imagePreview ? (
-              <>
-                <img src={imagePreview} alt="Preview" className="preview-img" />
-                <div className="camera-controls">
-                  <button type="button" onClick={clearPhoto} className="camera-btn">
-                    Retake / Clear
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="panel-content">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden shadow-sm">
+            <div className="relative h-[280px] bg-surface-container-low flex items-center justify-center">
+              {isCameraActive ? (
+                <>
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+                    <button type="button" onClick={capturePhoto} className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold shadow-lg">
+                      Capture
+                    </button>
+                    <button type="button" onClick={stopCamera} className="px-4 py-2 bg-outline text-white rounded-lg text-sm font-bold shadow-lg">
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : imagePreview ? (
+                <>
+                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
+                    <button type="button" onClick={clearPhoto} className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold shadow-lg">
+                      Retake / Clear
+                    </button>
+                  </div>
+                </>
+              ) : (
                 <div
-                  className="dashed-box"
+                  className="flex flex-col items-center gap-3 cursor-pointer group"
                   onClick={() => {
                     const choice = window.confirm("Use Webcam? (Click Cancel to upload a file instead)");
-                    if (choice) {
-                      startCamera();
-                    } else {
-                      fileInputRef.current?.click();
-                    }
+                    if (choice) startCamera();
+                    else fileInputRef.current?.click();
                   }}
                 >
-                  <svg
-                    className="camera-icon"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
-                    ></path>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"
-                    ></path>
-                  </svg>
+                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <span className="material-symbols-outlined text-primary text-3xl">photo_camera</span>
+                  </div>
+                  <span className="text-sm font-medium text-on-surface-variant">Tap to upload or take photo</span>
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  style={{ display: "none" }}
-                  onChange={handleFileUpload}
-                />
-              </div>
-            )}
-            <div className="panel-label">Tap to upload / take photo</div>
+              )}
+              <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+            </div>
+            <div className="px-4 py-3 border-t border-outline-variant/10">
+              <p className="text-xs font-medium text-on-surface-variant text-center">
+                {image ? `✓ Photo attached: ${image.name}` : "Photo required — shows issue to officials"}
+              </p>
+            </div>
           </div>
 
           {/* Location Panel */}
-          <div className="panel-card">
-            <div style={{ flex: 1, zIndex: 1 }}>
-              {/* Force map re-render when location is initially fetched otherwise it stays on default */}
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden shadow-sm">
+            <div className="relative h-[280px]" style={{ zIndex: 1 }}>
               <MapContainer
                 center={lat !== null && lng !== null ? [lat, lng] : [28.6139, 77.209]}
                 zoom={14}
@@ -260,32 +236,57 @@ export default function SubmitComplaintPage() {
                 <LocationPicker lat={lat} lng={lng} setLat={setLat} setLng={setLng} />
               </MapContainer>
             </div>
-            <div className="panel-label">Pin location</div>
+            <div className="px-4 py-3 border-t border-outline-variant/10 flex items-center justify-between">
+              <div className="text-xs text-on-surface-variant">
+                <p className="font-medium">{locationStatus}</p>
+                {lat !== null && lng !== null && (
+                  <p className="font-mono text-[10px] mt-0.5">{lat.toFixed(6)}, {lng.toFixed(6)}</p>
+                )}
+              </div>
+              <button type="button" onClick={requestCurrentLocation} className="px-3 py-1.5 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/20 transition-colors">
+                <span className="material-symbols-outlined text-sm mr-1">my_location</span>
+                GPS
+              </button>
+            </div>
           </div>
         </div>
 
-        <p className="location-status">{locationStatus}</p>
-        <p className="location-status">
-          {lat !== null && lng !== null ? `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}` : "No coordinates selected yet."}
-        </p>
-        <button type="button" onClick={requestCurrentLocation} className="camera-btn">
-          Retry GPS
-        </button>
+        {/* Description */}
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-5 shadow-sm">
+          <label className="block text-[13px] font-semibold text-on-surface-variant uppercase tracking-wider mb-3">
+            Describe the issue
+          </label>
+          <textarea
+            className="w-full h-[120px] bg-surface-container-low border border-outline-variant/20 rounded-lg px-4 py-3 text-sm font-body resize-vertical focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="E.g. Broken streetlight near the main market, dark at night..."
+            required
+          />
+          <p className="text-[10px] text-on-surface-variant mt-2">
+            <span className="material-symbols-outlined text-[12px] mr-1">translate</span>
+            Supports Hindi, English, and 20+ Indian languages via Bhashini
+          </p>
+        </div>
 
-        <textarea
-          className="full-textarea"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Describe the issue..."
-          required
-        />
+        {/* Error */}
+        {error && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-error-container/50 rounded-lg">
+            <span className="material-symbols-outlined text-error text-sm">error</span>
+            <p className="text-sm font-medium text-on-error-container">{error}</p>
+          </div>
+        )}
 
-        {error && <p className="error-text">{error}</p>}
-
-        <button type="submit" disabled={isSubmitting} className="submit-btn-large">
-          {isSubmitting ? "Submitting..." : "Submit"}
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full flex items-center justify-center gap-2 bg-primary text-on-primary py-3.5 rounded-lg font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="material-symbols-outlined text-lg">send</span>
+          {isSubmitting ? "Submitting..." : "Submit Complaint"}
         </button>
       </form>
-    </PageShell>
+    </AppLayout>
   );
 }
