@@ -64,18 +64,13 @@ def get_map_pins(
 
 @router.get("/nearby")
 def get_nearby_complaints(
-    lat: float = Query(..., description="User latitude"),
-    lng: float = Query(..., description="User longitude"),
-    radius_meters: int = Query(default=4000, le=10000, description="Radius in metres"),
+    lat: float = Query(...),
+    lng: float = Query(...),
+    radius_meters: int = Query(default=4000, le=10000),
     limit: int = Query(default=100, le=200),
     db: Session = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """
-    Returns ALL citizens' complaints within `radius_meters` of the given point.
-    Used by the dashboard map to show the civic picture around the user's location.
-    Default radius: 4 km.
-    """
     rows = db.execute(
         text("""
             SELECT
@@ -86,13 +81,21 @@ def get_nearby_complaints(
                 c.priority,
                 c.is_repeat_complaint,
                 c.created_at,
-                ST_Y(c.location::geometry)                                      AS lat,
-                ST_X(c.location::geometry)                                      AS lng,
+                c.infra_node_id,
+                ST_Y(c.location::geometry)                          AS lat,
+                ST_X(c.location::geometry)                          AS lng,
                 ST_Distance(
                     c.location::geography,
                     ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
-                )                                                               AS distance_meters
+                )                                                   AS distance_meters,
+                it.name  AS infra_type_name,
+                it.code  AS infra_type_code,
+                it.id    AS infra_type_id,
+                n.status AS node_status,
+                n.total_complaint_count
             FROM complaints c
+            LEFT JOIN infra_nodes  n  ON n.id  = c.infra_node_id
+            LEFT JOIN infra_types  it ON it.id = n.infra_type_id
             WHERE c.is_deleted = FALSE
               AND c.location IS NOT NULL
               AND ST_DWithin(
@@ -118,10 +121,85 @@ def get_nearby_complaints(
             "lng":                  float(row["lng"]),
             "distance_meters":      round(float(row["distance_meters"])),
             "created_at":           row["created_at"].isoformat() if row["created_at"] else None,
+            "infra_type_name":      row["infra_type_name"],
+            "infra_type_code":      row["infra_type_code"],
+            "infra_node_id":        str(row["infra_node_id"]) if row["infra_node_id"] else None,
+            "node_status":          row["node_status"],
+            "node_complaint_count": row["total_complaint_count"],
         }
         for row in rows
     ]
-    
+
+@router.get("/all")
+def get_all_complaints_map(
+    limit: int = Query(default=500, le=1000),
+    status: Optional[str] = Query(default=None),
+    infra_type_code: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """All complaints citywide for the map — admin and citizen both can see."""
+    filters = ["c.is_deleted = FALSE", "c.location IS NOT NULL"]
+    params  = {"limit": limit}
+
+    if status:
+        filters.append("c.status = :status")
+        params["status"] = status
+
+    if infra_type_code:
+        filters.append("it.code = :infra_type_code")
+        params["infra_type_code"] = infra_type_code
+
+    where = " AND ".join(filters)
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                c.id,
+                c.complaint_number,
+                c.title,
+                c.status,
+                c.priority,
+                c.is_repeat_complaint,
+                c.created_at,
+                c.infra_node_id,
+                ST_Y(c.location::geometry)  AS lat,
+                ST_X(c.location::geometry)  AS lng,
+                it.name  AS infra_type_name,
+                it.code  AS infra_type_code,
+                it.id    AS infra_type_id,
+                n.status AS node_status,
+                n.total_complaint_count
+            FROM complaints c
+            LEFT JOIN infra_nodes  n  ON n.id  = c.infra_node_id
+            LEFT JOIN infra_types  it ON it.id = n.infra_type_id
+            WHERE {where}
+            ORDER BY c.created_at DESC
+            LIMIT :limit
+        """),
+        params,
+    ).mappings().all()
+
+    return [
+        {
+            "id":                   str(row["id"]),
+            "complaint_number":     row["complaint_number"],
+            "title":                row["title"],
+            "status":               row["status"],
+            "priority":             row["priority"],
+            "is_repeat_complaint":  bool(row["is_repeat_complaint"]),
+            "lat":                  float(row["lat"]),
+            "lng":                  float(row["lng"]),
+            "distance_meters":      None,
+            "created_at":           row["created_at"].isoformat() if row["created_at"] else None,
+            "infra_type_name":      row["infra_type_name"],
+            "infra_type_code":      row["infra_type_code"],
+            "infra_node_id":        str(row["infra_node_id"]) if row["infra_node_id"] else None,
+            "node_status":          row["node_status"],
+            "node_complaint_count": row["total_complaint_count"],
+        }
+        for row in rows
+    ]
 @router.get("")
 def list_my_complaints(
     status: Optional[str] = Query(default=None, description="Filter by status"),

@@ -49,3 +49,11 @@ export async function fetchMyStats() {
   const { data } = await client.get("/stats/me");
   return data;
 }
+
+export async function fetchAllComplaints({ status, infraTypeCode } = {}) {
+  const params = {};
+  if (status)        params.status = status;
+  if (infraTypeCode) params.infra_type_code = infraTypeCode;
+  const { data } = await client.get("/complaints/all", { params });
+  return data;
+}

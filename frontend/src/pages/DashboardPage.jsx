@@ -1,49 +1,46 @@
-import { useEffect, useState, useRef } from "react";
+// src/pages/DashboardPage.jsx
+
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from "react-leaflet";
-import L from "leaflet";
 import AppLayout from "../components/AppLayout";
-import { fetchMyComplaints, fetchNearbyComplaints, fetchMyStats } from "../api/complaintsApi";
+import ComplaintMap from "../components/ComplaintMap";
+import {
+  fetchMyComplaints,
+  fetchNearbyComplaints,
+  fetchAllComplaints,
+  fetchMyStats,
+} from "../api/complaintsApi";
 import { toast } from "sonner";
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
-
 const STATUS_COLOR = {
-  received:          "#6750A4",
-  clustered:         "#6750A4",
-  mapped:            "#6750A4",
-  workflow_started:  "#2196F3",
-  in_progress:       "#FF9800",
-  midway_survey_sent:"#FF9800",
-  resolved:          "#4CAF50",
-  closed:            "#4CAF50",
-  rejected:          "#F44336",
-  escalated:         "#F44336",
-  emergency:         "#B00020",
-  constraint_blocked:"#795548",
+  received:          "#818cf8",
+  clustered:         "#818cf8",
+  mapped:            "#60a5fa",
+  workflow_started:  "#38bdf8",
+  in_progress:       "#fb923c",
+  midway_survey_sent:"#fb923c",
+  resolved:          "#34d399",
+  closed:            "#34d399",
+  rejected:          "#f87171",
+  escalated:         "#f87171",
+  emergency:         "#ef4444",
+  constraint_blocked:"#d97706",
 };
 
 const STATUS_LABEL = {
-  received: "Received", clustered: "Clustered", mapped: "Mapped",
-  workflow_started: "Assigned", in_progress: "In Progress",
-  midway_survey_sent: "Survey Sent", resolved: "Resolved",
-  closed: "Closed", rejected: "Rejected", escalated: "Escalated",
-  emergency: "Emergency", constraint_blocked: "Blocked",
+  received:          "Received",
+  clustered:         "Clustered",
+  mapped:            "Mapped",
+  workflow_started:  "Assigned",
+  in_progress:       "In Progress",
+  midway_survey_sent:"Survey Sent",
+  resolved:          "Resolved",
+  closed:            "Closed",
+  rejected:          "Rejected",
+  escalated:         "Escalated",
+  emergency:         "Emergency",
+  constraint_blocked:"Blocked",
 };
-
-function makeIcon(color) {
-  return L.divIcon({
-    className: "",
-    html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
-}
 
 function timeAgo(iso) {
   if (!iso) return "";
@@ -62,14 +59,16 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("auth_user") || "{}");
 
-  const [complaints, setComplaints]   = useState([]);
-  const [nearbyPins, setNearbyPins]   = useState([]);
-  const [stats, setStats]             = useState(null);
-  const [userLocation, setUserLocation] = useState(null); // [lat, lng]
+  const [complaints,     setComplaints]     = useState([]);
+  const [nearbyPins,     setNearbyPins]     = useState([]);
+  const [allPins,        setAllPins]        = useState([]);
+  const [stats,          setStats]          = useState(null);
+  const [userLocation,   setUserLocation]   = useState(null);
   const [locationStatus, setLocationStatus] = useState("locating");
-  const [loading, setLoading]         = useState(true);
+  const [loading,        setLoading]        = useState(true);
+  const [mapView,        setMapView]        = useState("nearby"); // "nearby" | "all"
 
-  // Step 1: get user's GPS location
+  // ── Step 1: GPS ──────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) {
       setUserLocation(DELHI_CENTER);
@@ -82,29 +81,31 @@ export default function DashboardPage() {
         setLocationStatus("found");
       },
       () => {
-        setUserLocation(DELHI_CENTER); // fallback to Delhi centre
+        setUserLocation(DELHI_CENTER);
         setLocationStatus("denied");
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }, []);
 
-  // Step 2: once we have location, load everything
+  // ── Step 2: Load all data once location is known ─────────────
   useEffect(() => {
     if (!userLocation) return;
 
     async function load() {
       setLoading(true);
       try {
-        const [complaintsRes, nearbyRes, statsRes] = await Promise.all([
+        const [complaintsRes, nearbyRes, allRes, statsRes] = await Promise.all([
           fetchMyComplaints({ limit: 5 }),
           fetchNearbyComplaints(userLocation[0], userLocation[1], 4000),
+          fetchAllComplaints(),
           fetchMyStats(),
         ]);
         setComplaints(complaintsRes.items || []);
         setNearbyPins(nearbyRes || []);
+        setAllPins(allRes || []);
         setStats(statsRes);
-      } catch (e) {
+      } catch {
         toast.error("Failed to load dashboard data.");
       } finally {
         setLoading(false);
@@ -113,12 +114,13 @@ export default function DashboardPage() {
     load();
   }, [userLocation]);
 
-  const totalAll      = stats?.total_count      ?? 1;
-  const totalResolved = stats?.resolved_count   ?? 0;
-  const slaPercent    = totalAll > 0 ? Math.round((totalResolved / totalAll) * 100) : 0;
-  const circumference = 2 * Math.PI * 24;
-  const slaOffset     = circumference * (1 - slaPercent / 100);
-
+  // ── Derived ──────────────────────────────────────────────────
+  const activePins       = mapView === "nearby" ? nearbyPins : allPins;
+  const totalAll         = stats?.total_count    ?? 1;
+  const totalResolved    = stats?.resolved_count ?? 0;
+  const slaPercent       = totalAll > 0 ? Math.round((totalResolved / totalAll) * 100) : 0;
+  const circumference    = 2 * Math.PI * 24;
+  const slaOffset        = circumference * (1 - slaPercent / 100);
   const activeComplaints = complaints.filter(
     (c) => !["resolved", "closed", "rejected"].includes(c.status)
   );
@@ -127,7 +129,7 @@ export default function DashboardPage() {
     <AppLayout>
       <div className="flex flex-col gap-6 p-6 lg:flex-row min-h-0">
 
-        {/* ── LEFT COLUMN ── */}
+        {/* ── LEFT ── */}
         <div className="flex flex-col gap-5 lg:w-[58%]">
 
           {/* Header */}
@@ -151,90 +153,54 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* MAP — 4km radius of real complaints */}
-          <div className="relative rounded-2xl overflow-hidden border border-outline-variant">
-            {/* Status bar */}
-            <div className="absolute top-3 left-3 z-[500] bg-surface/90 backdrop-blur-sm px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium shadow-sm">
-              <span className={`w-2 h-2 rounded-full ${locationStatus === "found" ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
-              {locationStatus === "locating" && "Getting your location…"}
-              {locationStatus === "found"    && `${nearbyPins.length} complaints within 4 km`}
-              {locationStatus === "denied"   && `${nearbyPins.length} complaints near Delhi centre`}
-              {locationStatus === "unavailable" && "Geolocation unavailable"}
-            </div>
+          {/* Map view toggle */}
+          <div className="flex items-center gap-2">
+            {[
+              { key: "nearby", label: `Nearby (${nearbyPins.length})`, icon: "near_me" },
+              { key: "all",    label: `All Delhi (${allPins.length})`,  icon: "public"  },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setMapView(opt.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                  mapView === opt.key
+                    ? "bg-primary text-on-primary border-primary shadow-sm"
+                    : "bg-surface-container border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">{opt.icon}</span>
+                {opt.label}
+              </button>
+            ))}
 
-            <MapContainer
-              center={userLocation || DELHI_CENTER}
-              zoom={13}
-              scrollWheelZoom={false}
-              style={{ height: "300px", width: "100%" }}
-              zoomControl={false}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://osm.org/copyright">OSM</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <ZoomControl position="bottomright" />
-
-              {/* User's own location marker */}
-              {userLocation && locationStatus === "found" && (
-                <Marker
-                  position={userLocation}
-                  icon={L.divIcon({
-                    className: "",
-                    html: `<div style="width:16px;height:16px;border-radius:50%;background:#2196F3;border:3px solid white;box-shadow:0 0 0 3px rgba(33,150,243,0.3)"></div>`,
-                    iconSize: [16, 16],
-                    iconAnchor: [8, 8],
-                  })}
-                >
-                  <Popup><p className="text-sm font-semibold">You are here</p></Popup>
-                </Marker>
-              )}
-
-              {/* Nearby complaints from real DB */}
-              {nearbyPins.map((pin) => (
-                <Marker
-                  key={pin.id}
-                  position={[pin.lat, pin.lng]}
-                  icon={makeIcon(STATUS_COLOR[pin.status] || "#6750A4")}
-                >
-                  <Popup>
-                    <div className="text-sm">
-                      <p className="font-bold">{pin.title}</p>
-                      <p className="text-xs capitalize text-gray-500">
-                        {STATUS_LABEL[pin.status] || pin.status}
-                        {pin.distance_meters && ` · ${(pin.distance_meters / 1000).toFixed(1)} km away`}
-                      </p>
-                      <button
-                        className="text-blue-600 underline text-xs mt-1"
-                        onClick={() => navigate(`/complaints/${pin.id}`)}
-                      >
-                        View details →
-                      </button>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
-
-            {/* Legend */}
-            <div className="absolute bottom-3 left-3 z-[500] bg-surface/90 backdrop-blur-sm px-3 py-1.5 rounded-xl text-xs shadow-sm flex gap-3">
-              {["in_progress", "resolved", "rejected"].map((s) => (
-                <span key={s} className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full" style={{ background: STATUS_COLOR[s] }} />
-                  {STATUS_LABEL[s]} ({nearbyPins.filter((p) => p.status === s).length})
-                </span>
-              ))}
-            </div>
+            {!loading && (
+              <span className="ml-auto flex items-center gap-1.5 text-[10px] text-on-surface-variant font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
+              </span>
+            )}
           </div>
 
-          {/* Recent complaints list */}
+          {/* 3D Map */}
+          <ComplaintMap
+            pins={activePins}
+            userLocation={userLocation}
+            locationStatus={locationStatus}
+            height="420px"
+            showRadius={mapView === "nearby"}
+            radiusMeters={4000}
+          />
+
+          {/* Recent complaints */}
           <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-headline font-semibold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-[20px] text-primary">receipt_long</span>
                 My Recent Complaints
               </h2>
-              <Link to="/my-complaints" className="text-primary text-sm hover:underline">View all →</Link>
+              <Link to="/my-complaints" className="text-primary text-sm hover:underline">
+                View all →
+              </Link>
             </div>
 
             {loading ? (
@@ -256,23 +222,25 @@ export default function DashboardPage() {
                 {complaints.map((c) => (
                   <div
                     key={c.id}
-                    className="flex items-start gap-3 p-3 rounded-xl bg-surface-container hover:bg-surface-container-high transition cursor-pointer"
                     onClick={() => navigate(`/complaints/${c.id}`)}
+                    className="flex items-start gap-3 p-3 rounded-xl bg-surface-container hover:bg-surface-container-high transition cursor-pointer"
                   >
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-on-surface-variant font-mono">#{c.complaint_number}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-on-surface-variant font-mono">
+                          #{c.complaint_number}
+                        </span>
                         <span
                           className="text-xs font-semibold px-2 py-0.5 rounded-full capitalize"
                           style={{
-                            background: (STATUS_COLOR[c.status] || "#666") + "22",
-                            color: STATUS_COLOR[c.status] || "#666",
+                            background: (STATUS_COLOR[c.status] || "#818cf8") + "22",
+                            color:      STATUS_COLOR[c.status] || "#818cf8",
                           }}
                         >
                           {STATUS_LABEL[c.status] || c.status}
                         </span>
                         {c.is_repeat_complaint && (
-                          <span className="text-xs text-error font-semibold">Repeat</span>
+                          <span className="text-xs text-red-400 font-semibold">Repeat</span>
                         )}
                       </div>
                       <p className="text-sm font-medium text-on-surface truncate">{c.title}</p>
@@ -280,7 +248,7 @@ export default function DashboardPage() {
                         <p className="text-xs text-on-surface-variant truncate">{c.address_text}</p>
                       )}
                     </div>
-                    <div className="text-right text-xs text-on-surface-variant whitespace-nowrap">
+                    <div className="text-right text-xs text-on-surface-variant whitespace-nowrap shrink-0">
                       {timeAgo(c.created_at)}
                     </div>
                   </div>
@@ -290,23 +258,66 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN ── */}
+        {/* ── RIGHT ── */}
         <div className="flex flex-col gap-5 lg:w-[42%]">
-          {/* Stats */}
+
+          {/* Stats cards */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Total",    value: stats?.total_count,    icon: "receipt_long" },
-              { label: "Active",   value: stats?.active_count,   icon: "pending" },
-              { label: "Resolved", value: stats?.resolved_count, icon: "check_circle" },
+              { label: "Total",    value: stats?.total_count,    icon: "receipt_long", color: "#818cf8" },
+              { label: "Active",   value: stats?.active_count,   icon: "pending",      color: "#fb923c" },
+              { label: "Resolved", value: stats?.resolved_count, icon: "check_circle", color: "#34d399" },
             ].map((s) => (
-              <div key={s.label} className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant flex flex-col items-center gap-1">
-                <span className="material-symbols-outlined text-primary text-[24px]">{s.icon}</span>
+              <div
+                key={s.label}
+                className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant flex flex-col items-center gap-1"
+                style={{ borderColor: s.color + "30" }}
+              >
+                <span className="material-symbols-outlined text-[24px]" style={{ color: s.color }}>
+                  {s.icon}
+                </span>
                 <span className="text-2xl font-headline font-bold text-on-surface">
                   {loading ? "…" : (s.value ?? 0)}
                 </span>
                 <span className="text-xs text-on-surface-variant">{s.label}</span>
               </div>
             ))}
+          </div>
+
+          {/* Delhi overview — near you vs citywide */}
+          <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant">
+            <h2 className="font-headline font-semibold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-primary">public</span>
+              Delhi Overview
+            </h2>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  label: "Near You (4km)",
+                  value: nearbyPins.length,
+                  sub:   `${nearbyPins.filter(p => !["resolved","closed","rejected"].includes(p.status)).length} active`,
+                  color: "#6366f1",
+                },
+                {
+                  label: "Citywide",
+                  value: allPins.length,
+                  sub:   `${allPins.filter(p => ["critical","emergency"].includes(p.priority)).length} critical`,
+                  color: "#f97316",
+                },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-xl p-3 border"
+                  style={{ borderColor: s.color + "25", background: s.color + "08" }}
+                >
+                  <p className="text-xs text-on-surface-variant font-medium mb-1">{s.label}</p>
+                  <p className="text-xl font-headline font-bold" style={{ color: s.color }}>
+                    {loading ? "…" : s.value}
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">{s.sub}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Resolution rate */}
@@ -316,11 +327,17 @@ export default function DashboardPage() {
               Resolution Rate
             </h2>
             <div className="flex items-center gap-6">
-              <div className="relative w-16 h-16">
+              <div className="relative w-16 h-16 shrink-0">
                 <svg className="rotate-[-90deg]" width="64" height="64" viewBox="0 0 64 64">
-                  <circle cx="32" cy="32" r="24" fill="none" stroke="#e8def8" strokeWidth="6" />
-                  <circle cx="32" cy="32" r="24" fill="none" stroke="#6750A4" strokeWidth="6"
-                    strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={slaOffset} />
+                  <circle cx="32" cy="32" r="24" fill="none" stroke="#e2e8f0" strokeWidth="6" />
+                  <circle
+                    cx="32" cy="32" r="24" fill="none"
+                    stroke={slaPercent >= 70 ? "#10b981" : slaPercent >= 40 ? "#f97316" : "#ef4444"}
+                    strokeWidth="6" strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={slaOffset}
+                    style={{ transition: "stroke-dashoffset 0.6s ease" }}
+                  />
                 </svg>
                 <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-on-surface">
                   {loading ? "…" : `${slaPercent}%`}
@@ -335,6 +352,15 @@ export default function DashboardPage() {
                     Avg. {stats.avg_resolution_days} days to resolve
                   </p>
                 )}
+                <span className={`text-xs font-semibold mt-1.5 inline-block px-2 py-0.5 rounded-full ${
+                  slaPercent >= 70
+                    ? "bg-green-500/10 text-green-600"
+                    : slaPercent >= 40
+                    ? "bg-orange-500/10 text-orange-600"
+                    : "bg-red-500/10 text-red-600"
+                }`}>
+                  {slaPercent >= 70 ? "On Track" : slaPercent >= 40 ? "In Progress" : "Low"}
+                </span>
               </div>
             </div>
           </div>
@@ -347,23 +373,22 @@ export default function DashboardPage() {
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Report Issue",    icon: "add_circle",    to: "/submit",         primary: true },
-                { label: "My Complaints",   icon: "list_alt",      to: "/my-complaints" },
-                { label: "Call 1031",       icon: "phone",         onClick: () => window.open("tel:1031") },
-                { label: "Notifications",   icon: "notifications", to: "/notifications" },
+                { label: "Report Issue",  icon: "add_circle",    to: "/submit",        primary: true },
+                { label: "My Complaints", icon: "list_alt",      to: "/my-complaints" },
+                { label: "Call 1031",     icon: "phone",         onClick: () => window.open("tel:1031") },
+                { label: "Notifications", icon: "notifications", to: "/notifications" },
               ].map((action) => {
                 const cls = `flex flex-col items-center gap-1.5 p-3 rounded-xl border transition text-sm font-medium ${
                   action.primary
                     ? "bg-primary text-on-primary border-primary hover:bg-primary/90"
                     : "bg-surface-container border-outline-variant text-on-surface hover:bg-surface-container-high"
                 }`;
-                if (action.to) return (
+                return action.to ? (
                   <Link key={action.label} to={action.to} className={cls}>
                     <span className="material-symbols-outlined text-[22px]">{action.icon}</span>
                     {action.label}
                   </Link>
-                );
-                return (
+                ) : (
                   <button key={action.label} className={cls} onClick={action.onClick}>
                     <span className="material-symbols-outlined text-[22px]">{action.icon}</span>
                     {action.label}
@@ -373,7 +398,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Active complaints summary */}
+          {/* Active list */}
           {!loading && activeComplaints.length > 0 && (
             <div className="bg-surface-container-low rounded-2xl p-5 border border-outline-variant">
               <h2 className="font-headline font-semibold text-on-surface mb-3 flex items-center gap-2">
@@ -381,10 +406,14 @@ export default function DashboardPage() {
                 Active ({activeComplaints.length})
               </h2>
               {activeComplaints.map((c) => (
-                <Link key={c.id} to={`/complaints/${c.id}`}
+                <Link
+                  key={c.id}
+                  to={`/complaints/${c.id}`}
                   className="flex items-center gap-3 py-2 border-b border-outline-variant last:border-0 hover:text-primary transition"
                 >
-                  <span className="text-xs font-mono text-on-surface-variant">#{c.complaint_number}</span>
+                  <span className="text-xs font-mono text-on-surface-variant">
+                    #{c.complaint_number}
+                  </span>
                   <span className="text-sm text-on-surface truncate flex-1">{c.title}</span>
                 </Link>
               ))}
