@@ -90,6 +90,12 @@ TEMPLATES = {
         "title_hi": "⚠️ बार-बार की शिकायत",
         "body_hi":  "शिकायत #{number} इस स्थान पर बार-बार आ रही है।",
     },
+    "TENDER_REJECTED": {
+        "title_en": "Tender Rejected",
+        "body_en":  "Your tender #{number} has been rejected. Reason: {reason}.",
+        "title_hi": "टेंडर अस्वीकृत",
+        "body_hi":  "आपका टेंडर #{number} अस्वीकृत हो गया है। कारण: {reason}।",
+    },
 }
 
 

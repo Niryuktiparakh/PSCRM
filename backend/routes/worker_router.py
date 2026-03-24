@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from dependencies import get_current_user
 from schemas import TokenData
+from services.pubsub_service import publish_event
 from services.storage_service import save_upload
 
 logger = logging.getLogger(__name__)
@@ -314,15 +315,24 @@ async def update_task(
         if task["workflow_step_instance_id"]:
             wsi_row = db.execute(
                 text("""
-                    SELECT workflow_instance_id, step_number
-                    FROM workflow_step_instances
-                    WHERE id = CAST(:wsid AS uuid)
+                    SELECT
+                        wsi.workflow_instance_id,
+                        wsi.step_number,
+                        wi.total_steps,
+                        wi.current_step_number,
+                        c.city_id
+                    FROM workflow_step_instances wsi
+                    JOIN workflow_instances wi ON wi.id = wsi.workflow_instance_id
+                    LEFT JOIN complaints c ON c.id = :cid::uuid
+                    WHERE wsi.id = CAST(:wsid AS uuid)
                 """),
-                {"wsid": str(task["workflow_step_instance_id"])},
+                {"wsid": str(task["workflow_step_instance_id"]), "cid": str(task["complaint_id"])},
             ).mappings().first()
 
             if wsi_row:
                 wid = str(wsi_row["workflow_instance_id"])
+                step_number = int(wsi_row["step_number"] or 0)
+                total_steps = int(wsi_row["total_steps"] or 0)
                 db.execute(
                     text("""
                         UPDATE workflow_step_instances
@@ -343,6 +353,28 @@ async def update_task(
                     """),
                     {"wid": wid},
                 )
+
+                event_type = "WORKFLOW_STEP_COMPLETED"
+                if step_number >= total_steps and total_steps > 0:
+                    event_type = "WORKFLOW_COMPLETED"
+
+                try:
+                    publish_event(
+                        db,
+                        event_type=event_type,
+                        payload={
+                            "workflow_instance_id": wid,
+                            "step_number": step_number,
+                            "total_steps": total_steps,
+                            "task_id": str(task_id),
+                            "task_status": "completed",
+                        },
+                        city_id=str(wsi_row["city_id"]) if wsi_row.get("city_id") else None,
+                        complaint_id=str(task["complaint_id"]) if task["complaint_id"] else None,
+                        workflow_instance_id=wid,
+                    )
+                except Exception as exc:
+                    logger.warning("Workflow event publish failed for task %s: %s", task_id, exc)
 
         # Decrement worker task count
         db.execute(

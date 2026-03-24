@@ -382,7 +382,13 @@ def get_complaint_queue(
                    c.workflow_instance_id, c.infra_node_id,
                    c.agent_summary, c.agent_priority_reason,
                    c.agent_suggested_dept_ids,
-                   c.mapping_confidence,
+                   (
+                       SELECT COALESCE((al.output_data->>'confidence')::float, al.confidence_score::float)
+                       FROM agent_logs al
+                       WHERE al.complaint_id = c.id
+                       ORDER BY al.created_at DESC
+                       LIMIT 1
+                   ) AS mapping_confidence,
                    it.name AS infra_type_name, it.code AS infra_type_code,
                    n.total_complaint_count AS node_complaint_count,
                    j.name AS jurisdiction_name,
@@ -423,8 +429,85 @@ def get_complaint_queue(
         d["lng"] = float(r["lng"]) if r["lng"] else None
         d["infra_node_id"]       = str(r["infra_node_id"]) if r["infra_node_id"] else None
         d["workflow_instance_id"]= str(r["workflow_instance_id"]) if r["workflow_instance_id"] else None
-        d["mapping_confidence"]  = float(r["mapping_confidence"]) if r["mapping_confidence"] else None
+        d["mapping_confidence"]  = float(r["mapping_confidence"]) if r["mapping_confidence"] is not None else None
         for ts in ("created_at","updated_at","resolved_at"):
+            d[ts] = r[ts].isoformat() if r[ts] else None
+        return d
+
+    return {"total": int(total), "limit": limit, "offset": offset, "items": [_fmt(r) for r in rows]}
+
+
+@router.get("/complaints/low-confidence")
+def get_low_confidence_queue(
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+    scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+    filters = [
+        scope["c_where"],
+        "(c.agent_suggested_dept_ids = '{}' OR array_length(c.agent_suggested_dept_ids, 1) IS NULL)",
+        "c.status IN ('received','mapped')",
+        "c.workflow_instance_id IS NULL",
+        "c.created_at < NOW() - INTERVAL '2 hours'",
+    ]
+    params = dict(scope["c_params"]) | {"limit": limit, "offset": offset}
+    where = " AND ".join(filters)
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT c.id, c.complaint_number, c.title, c.description,
+                   c.status, c.priority, c.is_repeat_complaint, c.repeat_gap_days,
+                   c.is_emergency, c.address_text,
+                   ST_Y(c.location::geometry) AS lat,
+                   ST_X(c.location::geometry) AS lng,
+                   c.created_at, c.updated_at, c.resolved_at,
+                   EXTRACT(DAY FROM NOW()-c.created_at)::int AS age_days,
+                   c.workflow_instance_id, c.infra_node_id,
+                   c.agent_summary, c.agent_priority_reason,
+                   c.agent_suggested_dept_ids,
+                   it.name AS infra_type_name, it.code AS infra_type_code,
+                   n.total_complaint_count AS node_complaint_count,
+                   j.name AS jurisdiction_name,
+                   u.full_name AS citizen_name, u.phone AS citizen_phone
+            FROM complaints c
+            LEFT JOIN infra_nodes  n  ON n.id  = c.infra_node_id
+            LEFT JOIN infra_types  it ON it.id = n.infra_type_id
+            LEFT JOIN jurisdictions j ON j.id  = c.jurisdiction_id
+            LEFT JOIN users u          ON u.id  = c.citizen_id
+            WHERE {where}
+            ORDER BY c.created_at ASC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    total = db.execute(
+        text(
+            f"""
+            SELECT COUNT(c.id)
+            FROM complaints c
+            LEFT JOIN infra_nodes  n  ON n.id  = c.infra_node_id
+            LEFT JOIN infra_types  it ON it.id = n.infra_type_id
+            WHERE {where}
+            """
+        ),
+        params,
+    ).scalar() or 0
+
+    def _fmt(r):
+        d = dict(r)
+        d["id"] = str(r["id"])
+        d["lat"] = float(r["lat"]) if r["lat"] else None
+        d["lng"] = float(r["lng"]) if r["lng"] else None
+        d["infra_node_id"] = str(r["infra_node_id"]) if r["infra_node_id"] else None
+        d["workflow_instance_id"] = str(r["workflow_instance_id"]) if r["workflow_instance_id"] else None
+        d["mapping_confidence"] = None
+        for ts in ("created_at", "updated_at", "resolved_at"):
             d[ts] = r[ts].isoformat() if r[ts] else None
         return d
 
@@ -451,7 +534,14 @@ def get_complaint_admin(
                    c.original_language, c.address_text, c.images, c.status,
                    c.priority, c.is_repeat_complaint, c.repeat_gap_days,
                    c.is_emergency, c.agent_summary, c.agent_priority_reason,
-                   c.agent_suggested_dept_ids, c.mapping_confidence,
+                                     c.agent_suggested_dept_ids,
+                                     (
+                                             SELECT COALESCE((al.output_data->>'confidence')::float, al.confidence_score::float)
+                                             FROM agent_logs al
+                                             WHERE al.complaint_id = c.id
+                                             ORDER BY al.created_at DESC
+                                             LIMIT 1
+                                     ) AS mapping_confidence,
                    c.created_at, c.updated_at, c.resolved_at,
                    ST_Y(c.location::geometry) AS lat, ST_X(c.location::geometry) AS lng,
                    it.name AS infra_type_name, it.code AS infra_type_code,
@@ -530,7 +620,7 @@ def get_complaint_admin(
         "is_emergency":           bool(c["is_emergency"]),
         "agent_summary":          c["agent_summary"],
         "agent_priority_reason":  c["agent_priority_reason"],
-        "mapping_confidence":     float(c["mapping_confidence"]) if c["mapping_confidence"] else None,
+        "mapping_confidence":     float(c["mapping_confidence"]) if c["mapping_confidence"] is not None else None,
         "infra_type_name":        c["infra_type_name"],
         "infra_type_code":        c["infra_type_code"],
         "jurisdiction_name":      c["jurisdiction_name"],
@@ -621,6 +711,11 @@ class WorkflowApproveBody(BaseModel):
     edit_reason:  Optional[str]        = None
 
 
+class WorkflowSaveLearningBody(BaseModel):
+    edit_reason: Optional[str] = None
+    edited_steps: Optional[List[Dict[str, Any]]] = None
+
+
 @router.post("/complaints/{complaint_id}/workflow-approve")
 def approve_workflow(
     complaint_id: UUID,
@@ -658,6 +753,208 @@ def approve_workflow(
     except Exception as e:
         logger.warning("Notification failed: %s", e)
     return result
+
+
+@router.post("/workflows/{workflow_instance_id}/save-learning")
+def save_workflow_learning(
+    workflow_instance_id: UUID,
+    body: WorkflowSaveLearningBody,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+
+    wi = db.execute(
+        text(
+            """
+            SELECT
+                wi.id,
+                wi.template_id,
+                wi.version_id,
+                wi.jurisdiction_id,
+                wt.city_id,
+                curv.infra_type_id,
+                curv.version AS current_version
+            FROM workflow_instances wi
+            JOIN workflow_templates wt ON wt.id = wi.template_id
+            JOIN workflow_template_versions curv ON curv.id = wi.version_id
+            WHERE wi.id = CAST(:wid AS uuid)
+            """
+        ),
+        {"wid": str(workflow_instance_id)},
+    ).mappings().first()
+
+    if not wi:
+        raise HTTPException(status_code=404, detail="Workflow instance not found")
+
+    new_version_row = db.execute(
+        text(
+            """
+            INSERT INTO workflow_template_versions (
+                template_id,
+                city_id,
+                jurisdiction_id,
+                infra_type_id,
+                version,
+                is_active,
+                is_latest_version,
+                previous_version_id,
+                notes,
+                created_by
+            ) VALUES (
+                CAST(:template_id AS uuid),
+                CAST(:city_id AS uuid),
+                CAST(:jurisdiction_id AS uuid),
+                CAST(:infra_type_id AS uuid),
+                :new_version,
+                TRUE,
+                TRUE,
+                CAST(:previous_version_id AS uuid),
+                :notes,
+                CAST(:created_by AS uuid)
+            )
+            RETURNING id, version
+            """
+        ),
+        {
+            "template_id": str(wi["template_id"]),
+            "city_id": str(wi["city_id"]),
+            "jurisdiction_id": str(wi["jurisdiction_id"]) if wi["jurisdiction_id"] else None,
+            "infra_type_id": str(wi["infra_type_id"]) if wi["infra_type_id"] else None,
+            "new_version": int(wi["current_version"] or 0) + 1,
+            "previous_version_id": str(wi["version_id"]),
+            "notes": body.edit_reason,
+            "created_by": str(current_user.user_id),
+        },
+    ).mappings().first()
+
+    db.execute(
+        text(
+            """
+            UPDATE workflow_template_versions
+            SET is_latest_version = FALSE
+            WHERE template_id = CAST(:template_id AS uuid)
+              AND id <> CAST(:new_version_id AS uuid)
+            """
+        ),
+        {
+            "template_id": str(wi["template_id"]),
+            "new_version_id": str(new_version_row["id"]),
+        },
+    )
+
+    steps = body.edited_steps or []
+    if steps:
+        for idx, step in enumerate(steps, start=1):
+            department_id = step.get("department_id")
+            if not department_id:
+                raise HTTPException(status_code=400, detail=f"edited_steps[{idx - 1}].department_id is required")
+
+            work_type_codes = step.get("work_type_codes") or []
+            if not isinstance(work_type_codes, list):
+                work_type_codes = []
+
+            db.execute(
+                text(
+                    """
+                    INSERT INTO workflow_template_steps (
+                        version_id,
+                        step_number,
+                        department_id,
+                        step_name,
+                        description,
+                        expected_duration_hours,
+                        is_optional,
+                        requires_tender,
+                        work_type_codes,
+                        metadata
+                    ) VALUES (
+                        CAST(:version_id AS uuid),
+                        :step_number,
+                        CAST(:department_id AS uuid),
+                        :step_name,
+                        :description,
+                        :expected_duration_hours,
+                        :is_optional,
+                        :requires_tender,
+                        CAST(:work_type_codes AS text[]),
+                        CAST(:metadata AS jsonb)
+                    )
+                    """
+                ),
+                {
+                    "version_id": str(new_version_row["id"]),
+                    "step_number": int(step.get("step_number") or idx),
+                    "department_id": str(department_id),
+                    "step_name": step.get("step_name") or f"Step {idx}",
+                    "description": step.get("description"),
+                    "expected_duration_hours": step.get("expected_duration_hours"),
+                    "is_optional": bool(step.get("is_optional", False)),
+                    "requires_tender": bool(step.get("requires_tender", False)),
+                    "work_type_codes": work_type_codes,
+                    "metadata": json.dumps(step.get("metadata") or {}),
+                },
+            )
+    else:
+        db.execute(
+            text(
+                """
+                INSERT INTO workflow_template_steps (
+                    version_id,
+                    step_number,
+                    department_id,
+                    step_name,
+                    description,
+                    expected_duration_hours,
+                    is_optional,
+                    requires_tender,
+                    work_type_codes,
+                    metadata
+                )
+                SELECT
+                    CAST(:new_version_id AS uuid),
+                    step_number,
+                    department_id,
+                    step_name,
+                    description,
+                    expected_duration_hours,
+                    is_optional,
+                    requires_tender,
+                    work_type_codes,
+                    metadata
+                FROM workflow_template_steps
+                WHERE version_id = CAST(:old_version_id AS uuid)
+                ORDER BY step_number
+                """
+            ),
+            {
+                "new_version_id": str(new_version_row["id"]),
+                "old_version_id": str(wi["version_id"]),
+            },
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE workflow_templates
+            SET times_used = times_used + 1,
+                last_used_at = NOW(),
+                situation_summary = COALESCE(:summary, situation_summary)
+            WHERE id = CAST(:template_id AS uuid)
+            """
+        ),
+        {
+            "summary": body.edit_reason,
+            "template_id": str(wi["template_id"]),
+        },
+    )
+
+    db.commit()
+    return {
+        "saved": True,
+        "new_version_id": str(new_version_row["id"]),
+        "version_number": int(new_version_row["version"]),
+    }
 
 
 # ══════════════════════════════════════════════════════════════
@@ -720,6 +1017,120 @@ def reroute_complaint(
 # ══════════════════════════════════════════════════════════════
 # 9. INFRA NODE SUMMARY — complaint history + active workflow
 # ══════════════════════════════════════════════════════════════
+
+@router.get("/infra-nodes")
+def get_infra_nodes_list(
+    dept_id: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    infra_type_code: Optional[str] = Query(default=None),
+    has_repeat_risk: Optional[bool] = Query(default=None),
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+    scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+    filters = ["n.is_deleted = FALSE"]
+    params: Dict[str, Any] = {"limit": limit, "offset": offset}
+
+    if scope.get("city_id"):
+        filters.append("n.city_id = CAST(:city_id AS uuid)")
+        params["city_id"] = scope["city_id"]
+
+    scoped_dept = dept_id
+    if current_user.role in {"admin", "official"} and scope.get("dept_id"):
+        scoped_dept = scope["dept_id"]
+    if scoped_dept:
+        filters.append(
+            """
+            EXISTS (
+                SELECT 1 FROM complaints c
+                WHERE c.infra_node_id = n.id
+                  AND c.is_deleted = FALSE
+                  AND CAST(:dept_id AS uuid) = ANY(c.agent_suggested_dept_ids)
+            )
+            """
+        )
+        params["dept_id"] = scoped_dept
+
+    if current_user.role == "official" and scope.get("jur_id"):
+        filters.append("n.jurisdiction_id = CAST(:jur_id AS uuid)")
+        params["jur_id"] = scope["jur_id"]
+
+    if status:
+        filters.append("n.status = :status")
+        params["status"] = status
+    if infra_type_code:
+        filters.append("it.code = :infra_type_code")
+        params["infra_type_code"] = infra_type_code
+    if has_repeat_risk is True:
+        filters.append("n.last_resolved_at IS NOT NULL AND NOW()-n.last_resolved_at < (it.repeat_alert_years || ' years')::INTERVAL")
+
+    where = " AND ".join(filters)
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                n.id, n.status, n.total_complaint_count, n.total_resolved_count,
+                n.last_resolved_at,
+                it.name AS infra_type_name, it.code AS infra_type_code,
+                j.name AS jurisdiction_name,
+                ST_Y(n.location::geometry) AS lat,
+                ST_X(n.location::geometry) AS lng,
+                (
+                    SELECT COUNT(*)
+                    FROM complaints c
+                    WHERE c.infra_node_id = n.id
+                      AND c.is_deleted = FALSE
+                      AND c.status NOT IN ('resolved','closed','rejected')
+                ) AS open_complaint_count
+            FROM infra_nodes n
+            JOIN infra_types it ON it.id = n.infra_type_id
+            LEFT JOIN jurisdictions j ON j.id = n.jurisdiction_id
+            WHERE {where}
+            ORDER BY n.updated_at DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    total = db.execute(
+        text(
+            f"""
+            SELECT COUNT(*)
+            FROM infra_nodes n
+            JOIN infra_types it ON it.id = n.infra_type_id
+            LEFT JOIN jurisdictions j ON j.id = n.jurisdiction_id
+            WHERE {where}
+            """
+        ),
+        {k: v for k, v in params.items() if k not in {"limit", "offset"}},
+    ).scalar() or 0
+
+    return {
+        "total": int(total),
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            {
+                "id": str(r["id"]),
+                "status": r["status"],
+                "infra_type_name": r["infra_type_name"],
+                "infra_type_code": r["infra_type_code"],
+                "jurisdiction_name": r["jurisdiction_name"],
+                "total_complaint_count": int(r["total_complaint_count"] or 0),
+                "total_resolved_count": int(r["total_resolved_count"] or 0),
+                "open_complaint_count": int(r["open_complaint_count"] or 0),
+                "last_resolved_at": r["last_resolved_at"].isoformat() if r["last_resolved_at"] else None,
+                "lat": float(r["lat"]) if r["lat"] is not None else None,
+                "lng": float(r["lng"]) if r["lng"] is not None else None,
+            }
+            for r in rows
+        ],
+    }
 
 @router.get("/infra-nodes/{node_id}/summary")
 def get_infra_node_summary(
@@ -946,6 +1357,88 @@ Return JSON with exactly these keys:
     return result
 
 
+@router.get("/critical-alerts")
+def get_critical_alerts(
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+    scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+    city_id = scope.get("city_id")
+    if not city_id:
+        raise HTTPException(status_code=400, detail="City scope missing")
+
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                n.id AS node_id,
+                n.status AS node_status,
+                n.last_resolved_at,
+                n.total_complaint_count,
+                it.name AS infra_type_name,
+                it.repeat_alert_years,
+                EXTRACT(DAY FROM NOW() - n.last_resolved_at)::int AS days_since_resolution,
+                j.name AS jurisdiction_name,
+                ST_Y(n.location::geometry) AS lat,
+                ST_X(n.location::geometry) AS lng,
+                co.company_name AS liable_contractor,
+                co.id AS contractor_id,
+                co.registration_number,
+                c_new.id AS new_complaint_id,
+                c_new.complaint_number,
+                c_new.created_at AS new_complaint_at,
+                c_new.priority
+            FROM infra_nodes n
+            JOIN infra_types it ON it.id = n.infra_type_id
+            LEFT JOIN jurisdictions j ON j.id = n.jurisdiction_id
+            JOIN complaints c_new ON c_new.infra_node_id = n.id
+                AND c_new.is_repeat_complaint = TRUE
+                AND c_new.status NOT IN ('resolved','closed','rejected')
+                AND c_new.is_deleted = FALSE
+            LEFT JOIN LATERAL (
+                SELECT t.assigned_contractor_id
+                FROM tasks t
+                WHERE t.complaint_id IN (
+                    SELECT id
+                    FROM complaints
+                    WHERE infra_node_id = n.id AND status IN ('resolved','closed')
+                    ORDER BY resolved_at DESC
+                    LIMIT 1
+                )
+                AND t.assigned_contractor_id IS NOT NULL
+                LIMIT 1
+            ) last_task ON TRUE
+            LEFT JOIN contractors co ON co.id = last_task.assigned_contractor_id
+            WHERE n.last_resolved_at IS NOT NULL
+              AND NOW() - n.last_resolved_at < (it.repeat_alert_years || ' years')::INTERVAL
+              AND n.city_id = CAST(:city_id AS uuid)
+              AND n.is_deleted = FALSE
+            ORDER BY c_new.created_at DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"city_id": city_id, "limit": limit, "offset": offset},
+    ).mappings().all()
+
+    out = []
+    for r in rows:
+        item = dict(r)
+        item["node_id"] = str(r["node_id"])
+        item["new_complaint_id"] = str(r["new_complaint_id"])
+        item["contractor_id"] = str(r["contractor_id"]) if r["contractor_id"] else None
+        item["lat"] = float(r["lat"]) if r["lat"] is not None else None
+        item["lng"] = float(r["lng"]) if r["lng"] is not None else None
+        item["new_complaint_at"] = r["new_complaint_at"].isoformat() if r["new_complaint_at"] else None
+        item["last_resolved_at"] = r["last_resolved_at"].isoformat() if r["last_resolved_at"] else None
+        item["liable_contractor_flag"] = bool(r["contractor_id"])
+        out.append(item)
+
+    return {"total": len(out), "limit": limit, "offset": offset, "items": out}
+
+
 # ══════════════════════════════════════════════════════════════
 # 10. TASK ASSIGNMENT
 # ══════════════════════════════════════════════════════════════
@@ -971,7 +1464,7 @@ def assign_task(
         raise HTTPException(status_code=400, detail="Provide at least one assignee")
 
     task = db.execute(
-        text("SELECT id, status, assigned_worker_id, assigned_contractor_id, title FROM tasks WHERE id = CAST(:tid AS uuid) AND is_deleted=FALSE"),
+        text("SELECT id, task_number, complaint_id, status, assigned_worker_id, assigned_contractor_id, title FROM tasks WHERE id = CAST(:tid AS uuid) AND is_deleted=FALSE"),
         {"tid": str(task_id)},
     ).mappings().first()
     if not task:
@@ -1022,6 +1515,33 @@ def assign_task(
                 variables={"task_title": task["title"]}, data={"task_id": str(task_id)})
 
     db.commit()
+
+    # Notify citizens within 500m of the infra node
+    try:
+        task_number = task.get("task_number")
+        complaint_id = task.get("complaint_id")
+        node_location = db.execute(text("""
+            SELECT c.location FROM tasks t
+            JOIN complaints c ON c.id = t.complaint_id
+            WHERE t.id = CAST(:tid AS uuid) LIMIT 1
+        """), {"tid": str(task_id)}).scalar()
+        if node_location:
+            subscribers = db.execute(text("""
+                SELECT user_id FROM fn_get_area_subscribers(
+                    CAST(:loc AS geometry), 500
+                )
+            """), {"loc": node_location}).mappings().all()
+            for sub in subscribers:
+                dispatch_notification(
+                    db, user_id=str(sub["user_id"]),
+                    event_type="WORKFLOW_STARTED",
+                    variables={"number": task_number, "eta": "as per schedule"},
+                    data={"task_id": str(task_id), "complaint_id": str(complaint_id)}
+                )
+            db.commit()
+    except Exception as e:
+        logger.warning("Area notification failed: %s", e)
+
     return {"status": "assigned", "task_id": str(task_id)}
 
 
@@ -1130,6 +1650,36 @@ def get_departments(
         params,
     ).mappings().all()
     return [dict(r) | {"id": str(r["id"])} for r in rows]
+
+
+@router.get("/jurisdictions")
+def get_jurisdictions(
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+    scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+    if not scope.get("city_id"):
+        return []
+
+    rows = db.execute(
+        text("""
+            SELECT id, name, code, city_id
+            FROM jurisdictions
+            WHERE city_id = CAST(:city_id AS uuid)
+            ORDER BY name
+        """),
+        {"city_id": scope["city_id"]},
+    ).mappings().all()
+
+    return [
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "code": r["code"],
+        }
+        for r in rows
+    ]
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1272,6 +1822,341 @@ def get_admin_tasks(
             for r in rows
         ],
     }
+
+
+class CreateTenderRequest(BaseModel):
+    task_id: str
+    title: str
+    description: Optional[str] = None
+    scope_of_work: Optional[str] = None
+    estimated_cost: Optional[float] = None
+
+
+class TenderActionBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.get("/tenders")
+def get_tenders(
+    status: Optional[str] = Query(default=None),
+    dept_id: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, ADMIN_ROLES)
+    scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+
+    filters = ["1=1"]
+    params: Dict[str, Any] = {}
+
+    if status:
+        filters.append("t.status = :status")
+        params["status"] = status
+
+    if current_user.role == "super_admin" and scope.get("city_id"):
+        filters.append("d.city_id = CAST(:city_id AS uuid)")
+        params["city_id"] = scope["city_id"]
+    elif scope.get("dept_id"):
+        filters.append("t.department_id = CAST(:scope_dept_id AS uuid)")
+        params["scope_dept_id"] = scope["dept_id"]
+
+    if dept_id and current_user.role == "super_admin":
+        filters.append("t.department_id = CAST(:dept_id AS uuid)")
+        params["dept_id"] = dept_id
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                t.*,
+                tk.title AS task_title,
+                u.full_name AS submitter_name,
+                d.name AS dept_name
+            FROM tenders t
+            LEFT JOIN tasks tk ON tk.workflow_step_instance_id = t.workflow_step_instance_id
+            LEFT JOIN users u ON u.id = t.requested_by
+            LEFT JOIN departments d ON d.id = t.department_id
+            WHERE {' AND '.join(filters)}
+            ORDER BY t.created_at DESC
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    result = []
+    for r in rows:
+        item = dict(r)
+        item["id"] = str(r["id"])
+        item["department_id"] = str(r["department_id"])
+        item["workflow_step_instance_id"] = str(r["workflow_step_instance_id"]) if r["workflow_step_instance_id"] else None
+        item["complaint_id"] = str(r["complaint_id"]) if r["complaint_id"] else None
+        item["requested_by"] = str(r["requested_by"]) if r["requested_by"] else None
+        item["approved_by"] = str(r["approved_by"]) if r["approved_by"] else None
+        item["rejected_by"] = str(r["rejected_by"]) if r["rejected_by"] else None
+        item["awarded_to_contractor_id"] = str(r["awarded_to_contractor_id"]) if r["awarded_to_contractor_id"] else None
+        for ts in ("submitted_at", "approved_at", "awarded_at", "created_at", "updated_at"):
+            item[ts] = r[ts].isoformat() if r[ts] else None
+        result.append(item)
+
+    return result
+
+
+@router.post("/tenders")
+def create_tender(
+    body: CreateTenderRequest,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, {"official", "admin", "super_admin"})
+
+    task = db.execute(
+        text(
+            """
+            SELECT t.id, t.department_id, t.workflow_step_instance_id, t.complaint_id,
+                   d.city_id, ci.city_code
+            FROM tasks t
+            JOIN departments d ON d.id = t.department_id
+            JOIN cities ci ON ci.id = d.city_id
+            WHERE t.id = CAST(:task_id AS uuid) AND t.is_deleted = FALSE
+            """
+        ),
+        {"task_id": body.task_id},
+    ).mappings().first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if current_user.role in {"official", "admin"}:
+        scope = _get_user_scope(db, str(current_user.user_id), current_user.role)
+        if scope.get("dept_id") and str(task["department_id"]) != str(scope["dept_id"]):
+            raise HTTPException(status_code=403, detail="Task is outside your department scope")
+
+    tender_number = db.execute(
+        text("SELECT fn_generate_tender_number(:city_code)"),
+        {"city_code": task["city_code"]},
+    ).scalar()
+
+    tender = db.execute(
+        text(
+            """
+            INSERT INTO tenders (
+                tender_number,
+                department_id,
+                workflow_step_instance_id,
+                complaint_id,
+                requested_by,
+                title,
+                description,
+                scope_of_work,
+                estimated_cost,
+                status,
+                submitted_at
+            ) VALUES (
+                :tender_number,
+                CAST(:department_id AS uuid),
+                CAST(:workflow_step_instance_id AS uuid),
+                CAST(:complaint_id AS uuid),
+                CAST(:requested_by AS uuid),
+                :title,
+                :description,
+                :scope_of_work,
+                :estimated_cost,
+                'submitted',
+                NOW()
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "tender_number": tender_number,
+            "department_id": str(task["department_id"]),
+            "workflow_step_instance_id": str(task["workflow_step_instance_id"]) if task["workflow_step_instance_id"] else None,
+            "complaint_id": str(task["complaint_id"]) if task["complaint_id"] else None,
+            "requested_by": str(current_user.user_id),
+            "title": body.title,
+            "description": body.description,
+            "scope_of_work": body.scope_of_work,
+            "estimated_cost": body.estimated_cost,
+        },
+    ).mappings().first()
+
+    db.execute(
+        text(
+            """
+            INSERT INTO domain_events
+                (event_type, entity_type, entity_id, actor_id, actor_type, payload, complaint_id, city_id)
+            VALUES
+                ('TENDER_SUBMITTED', 'tender', CAST(:entity_id AS uuid), CAST(:actor_id AS uuid), :actor_type,
+                 CAST(:payload AS jsonb), CAST(:complaint_id AS uuid), CAST(:city_id AS uuid))
+            """
+        ),
+        {
+            "entity_id": str(tender["id"]),
+            "actor_id": str(current_user.user_id),
+            "actor_type": current_user.role,
+            "payload": json.dumps({"tender_number": tender_number, "task_id": body.task_id}),
+            "complaint_id": str(task["complaint_id"]) if task["complaint_id"] else None,
+            "city_id": str(task["city_id"]),
+        },
+    )
+    db.commit()
+
+    return {"id": str(tender["id"]), "tender_number": tender_number, "status": "submitted"}
+
+
+@router.post("/tenders/{tender_id}/approve")
+def approve_tender(
+    tender_id: UUID,
+    body: TenderActionBody,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, {"admin", "super_admin"})
+
+    tender = db.execute(
+        text(
+            """
+            SELECT t.id, t.status, t.requested_by, t.complaint_id, d.city_id, t.tender_number
+            FROM tenders t
+            JOIN departments d ON d.id = t.department_id
+            WHERE t.id = CAST(:tid AS uuid)
+            """
+        ),
+        {"tid": str(tender_id)},
+    ).mappings().first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    if current_user.role == "admin":
+        if tender["status"] != "submitted":
+            raise HTTPException(status_code=400, detail="Admin can approve only submitted tenders")
+        new_status = "under_review"
+        note = body.reason or "Admin approved"
+    else:
+        if tender["status"] != "under_review":
+            raise HTTPException(status_code=400, detail="Super admin can approve only under_review tenders")
+        new_status = "approved"
+        note = body.reason or "Super admin approved"
+
+    db.execute(
+        text(
+            """
+            UPDATE tenders
+            SET status = :status,
+                approved_by = CAST(:approved_by AS uuid),
+                approved_at = NOW(),
+                approval_notes = :approval_notes,
+                updated_at = NOW()
+            WHERE id = CAST(:tid AS uuid)
+            """
+        ),
+        {
+            "status": new_status,
+            "approved_by": str(current_user.user_id),
+            "approval_notes": note,
+            "tid": str(tender_id),
+        },
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO domain_events
+                (event_type, entity_type, entity_id, actor_id, actor_type, payload, complaint_id, city_id)
+            VALUES
+                ('TENDER_APPROVED', 'tender', CAST(:entity_id AS uuid), CAST(:actor_id AS uuid), :actor_type,
+                 CAST(:payload AS jsonb), CAST(:complaint_id AS uuid), CAST(:city_id AS uuid))
+            """
+        ),
+        {
+            "entity_id": str(tender_id),
+            "actor_id": str(current_user.user_id),
+            "actor_type": current_user.role,
+            "payload": json.dumps({"status": new_status, "reason": body.reason}),
+            "complaint_id": str(tender["complaint_id"]) if tender["complaint_id"] else None,
+            "city_id": str(tender["city_id"]),
+        },
+    )
+
+    db.commit()
+    return {"status": new_status, "tender_id": str(tender_id)}
+
+
+@router.post("/tenders/{tender_id}/reject")
+def reject_tender(
+    tender_id: UUID,
+    body: TenderActionBody,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    _require(current_user, {"admin", "super_admin"})
+    if not body.reason or not body.reason.strip():
+        raise HTTPException(status_code=400, detail="reason is required")
+
+    tender = db.execute(
+        text(
+            """
+            SELECT t.id, t.requested_by, t.complaint_id, d.city_id, t.tender_number
+            FROM tenders t
+            JOIN departments d ON d.id = t.department_id
+            WHERE t.id = CAST(:tid AS uuid)
+            """
+        ),
+        {"tid": str(tender_id)},
+    ).mappings().first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+
+    db.execute(
+        text(
+            """
+            UPDATE tenders
+            SET status = 'rejected',
+                rejected_by = CAST(:rejected_by AS uuid),
+                rejection_reason = :reason,
+                updated_at = NOW()
+            WHERE id = CAST(:tid AS uuid)
+            """
+        ),
+        {
+            "rejected_by": str(current_user.user_id),
+            "reason": body.reason,
+            "tid": str(tender_id),
+        },
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO domain_events
+                (event_type, entity_type, entity_id, actor_id, actor_type, payload, complaint_id, city_id)
+            VALUES
+                ('TENDER_REJECTED', 'tender', CAST(:entity_id AS uuid), CAST(:actor_id AS uuid), :actor_type,
+                 CAST(:payload AS jsonb), CAST(:complaint_id AS uuid), CAST(:city_id AS uuid))
+            """
+        ),
+        {
+            "entity_id": str(tender_id),
+            "actor_id": str(current_user.user_id),
+            "actor_type": current_user.role,
+            "payload": json.dumps({"reason": body.reason}),
+            "complaint_id": str(tender["complaint_id"]) if tender["complaint_id"] else None,
+            "city_id": str(tender["city_id"]),
+        },
+    )
+
+    try:
+        dispatch_notification(
+            db,
+            user_id=str(tender["requested_by"]),
+            event_type="TENDER_REJECTED",
+            variables={"number": tender["tender_number"], "reason": body.reason},
+            data={"tender_id": str(tender_id)},
+        )
+    except Exception as exc:
+        logger.warning("Failed to dispatch tender rejection notification: %s", exc)
+
+    db.commit()
+    return {"status": "rejected", "tender_id": str(tender_id)}
 
 
 # ══════════════════════════════════════════════════════════════

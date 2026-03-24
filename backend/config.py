@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     FIREBASE_SERVICE_ACCOUNT_PATH: str = "serviceAccountKey.json"
     PUBSUB_ENABLED: bool = False
+    PUBSUB_PUSH_SECRET: Optional[str] = None
     VERTEX_AI_LOCATION: str = "asia-south1"
     SMTP_HOST:     Optional[str] = None
     SMTP_PORT:     int           = 465
