@@ -1,7 +1,6 @@
 // src/pages/PublicMapPage.jsx
 // Public facing map — no auth required for viewing.
-// Uses Mapbox 3D (react-map-gl) + real /complaints/all API data.
-// Stats are also real from the same endpoint.
+// Uses Mapbox 3D dark-v11 + real /complaints/all API data.
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -15,10 +14,10 @@ const BUILDINGS_LAYER = {
   id: "3d-buildings", source: "composite", "source-layer": "building",
   filter: ["==", "extrude", "true"], type: "fill-extrusion", minzoom: 12,
   paint: {
-    "fill-extrusion-color": ["interpolate",["linear"],["get","height"],0,"#e2e8f0",40,"#cbd5e1",100,"#94a3b8"],
+    "fill-extrusion-color": ["interpolate",["linear"],["get","height"],0,"#dde3ea",40,"#c8d0da",100,"#9aaabb"],
     "fill-extrusion-height": ["get","height"],
     "fill-extrusion-base":   ["get","min_height"],
-    "fill-extrusion-opacity": 0.6,
+    "fill-extrusion-opacity": 0.65,
   },
 };
 
@@ -46,14 +45,22 @@ const FILTER_OPTS = [
   { k:"resolved",  l:"Resolved",    color:"#34d399" },
 ];
 
-function StatCard({ label, value, icon, color, bg }) {
+const glassPanel = {
+  background: "rgba(255,255,255,0.88)",
+  backdropFilter: "blur(20px)",
+  borderRight: "1px solid rgba(0,0,0,0.08)",
+};
+
+function StatCard({ label, value, icon, color }) {
   return (
-    <div className="p-3 rounded-xl border border-slate-100">
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-2`} style={{ background: bg }}>
+    <div className="p-3 rounded-xl"
+      style={{ background: "rgba(255,255,255,0.7)", border: `1px solid ${color}18`, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-2"
+        style={{ background: color + "15" }}>
         <span className="material-symbols-outlined text-sm" style={{ color }}>{icon}</span>
       </div>
-      <p className="text-lg font-bold font-mono text-slate-900">{value}</p>
-      <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">{label}</p>
+      <p className="text-lg font-bold font-mono" style={{ color }}>{value}</p>
+      <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mt-0.5">{label}</p>
     </div>
   );
 }
@@ -73,21 +80,17 @@ export default function PublicMapPage() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  // Derived stats
-  const total     = pins.length;
-  const active    = pins.filter(p => !["resolved","closed","rejected"].includes(p.status)).length;
-  const critical  = pins.filter(p => ["critical","emergency"].includes(p.priority)).length;
-  const resolved  = pins.filter(p => ["resolved","closed"].includes(p.status)).length;
+  const total    = pins.length;
+  const active   = pins.filter(p => !["resolved","closed","rejected"].includes(p.status)).length;
+  const critical = pins.filter(p => ["critical","emergency"].includes(p.priority)).length;
+  const resolved = pins.filter(p => ["resolved","closed"].includes(p.status)).length;
 
-  // Infra type breakdown
   const infraCounts = {};
   pins.forEach(p => {
     const k = p.infra_type_name || "General";
     infraCounts[k] = (infraCounts[k] || 0) + 1;
   });
-  const topInfra = Object.entries(infraCounts)
-    .sort((a,b) => b[1]-a[1])
-    .slice(0,6);
+  const topInfra = Object.entries(infraCounts).sort((a,b) => b[1]-a[1]).slice(0,6);
   const maxCount = topInfra[0]?.[1] || 1;
 
   const visible = pins.filter(p => {
@@ -99,25 +102,32 @@ export default function PublicMapPage() {
   });
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans">
+    <div className="min-h-screen flex flex-col"
+      style={{ background: "linear-gradient(135deg,#eef2ff,#f8faff,#f0f4ff)", fontFamily: "Inter,system-ui,sans-serif" }}>
+
       {/* Top Nav */}
-      <header className="flex items-center justify-between px-5 h-[56px] bg-white border-b border-slate-100 sticky top-0 z-50 shadow-sm">
+      <header className="flex items-center justify-between px-5 h-14 sticky top-0 z-50"
+        style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-sky-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg,#38bdf8,#818cf8)" }}>
             <span className="material-symbols-outlined text-white text-[16px]">location_city</span>
           </div>
-          <span className="font-black text-[17px] text-slate-900 tracking-tight">PS-CRM</span>
+          <span className="font-black text-[17px] text-slate-800 tracking-tight">PS-CRM</span>
           <span className="hidden sm:block text-xs text-slate-400 ml-1 font-medium">Delhi Public Dashboard</span>
         </div>
         <div className="flex items-center gap-3">
           {!loading && lastUpdate && (
-            <span className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Updated {Math.floor((Date.now() - lastUpdate) / 60000) < 1 ? "just now" : `${Math.floor((Date.now() - lastUpdate) / 60000)}m ago`}
             </span>
           )}
           <Link to="/login"
-            className="px-4 py-2 bg-sky-600 text-white rounded-lg text-sm font-bold hover:bg-sky-700 transition">
+            className="px-4 py-2 rounded-lg text-sm font-bold text-sky-600 transition-all"
+            style={{ background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.3)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(56,189,248,0.22)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(56,189,248,0.12)"}>
             Login to Report
           </Link>
         </div>
@@ -125,37 +135,39 @@ export default function PublicMapPage() {
 
       {/* Main layout */}
       <main className="flex-1 flex flex-col lg:flex-row">
-        {/* ── Left Stats Panel ── */}
-        <aside className="w-full lg:w-[340px] bg-white border-r border-slate-100 flex flex-col overflow-y-auto">
-          <div className="p-5 border-b border-slate-50">
-            <h2 className="font-black text-lg text-slate-900 mb-0.5">Delhi Live Civic Map</h2>
-            <p className="text-xs text-slate-400">
+
+        {/* Left Stats Panel */}
+        <aside className="w-full lg:w-85 flex flex-col overflow-y-auto" style={glassPanel}>
+          <div className="p-5" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+            <h2 className="font-black text-lg text-slate-800 mb-0.5">Delhi Live Civic Map</h2>
+            <p className="text-xs text-slate-500">
               {loading ? "Loading live data…" : `${total} complaints across Delhi NCT`}
             </p>
           </div>
 
           {/* Stats grid */}
-          <div className="p-4 grid grid-cols-2 gap-3 border-b border-slate-50">
-            <StatCard label="Total Active"   value={loading?"…":active}   icon="pending_actions" color="#6366f1" bg="#6366f115" />
-            <StatCard label="Resolved (all)" value={loading?"…":resolved} icon="check_circle"    color="#10b981" bg="#10b98115" />
-            <StatCard label="Critical"       value={loading?"…":critical} icon="error"           color="#ef4444" bg="#ef444415" />
-            <StatCard label="Total Filed"    value={loading?"…":total}    icon="receipt_long"    color="#0ea5e9" bg="#0ea5e915" />
+          <div className="p-4 grid grid-cols-2 gap-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+            <StatCard label="Total Active"   value={loading?"…":active}   icon="pending_actions" color="#818cf8" />
+            <StatCard label="Resolved (all)" value={loading?"…":resolved} icon="check_circle"    color="#34d399" />
+            <StatCard label="Critical"       value={loading?"…":critical} icon="error"           color="#ef4444" />
+            <StatCard label="Total Filed"    value={loading?"…":total}    icon="receipt_long"    color="#38bdf8" />
           </div>
 
           {/* Infra breakdown */}
           {topInfra.length > 0 && (
-            <div className="p-4 border-b border-slate-50">
-              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Category Breakdown</h3>
-              <div className="space-y-2.5">
+            <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Category Breakdown</h3>
+              <div className="flex flex-col gap-2.5">
                 {topInfra.map(([name, count]) => (
                   <div key={name}>
                     <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-medium text-slate-600 truncate max-w-[180px]">{name}</span>
-                      <span className="font-bold text-slate-800 ml-2">{count}</span>
+                      <span className="font-medium text-slate-500 truncate max-w-45">{name}</span>
+                      <span className="font-bold text-slate-700 ml-2">{count}</span>
                     </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-sky-500 rounded-full transition-all"
-                        style={{ width: `${(count / maxCount) * 100}%` }} />
+                    <div className="h-1.5 w-full rounded-full overflow-hidden"
+                      style={{ background: "rgba(0,0,0,0.07)" }}>
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${(count / maxCount) * 100}%`, background: "linear-gradient(90deg,#38bdf8,#818cf8)" }} />
                     </div>
                   </div>
                 ))}
@@ -164,15 +176,15 @@ export default function PublicMapPage() {
           )}
 
           {/* Filter chips */}
-          <div className="p-4 border-b border-slate-50">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Filter Map</h3>
+          <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Filter Map</h3>
             <div className="flex flex-wrap gap-2">
               {FILTER_OPTS.map(f => (
                 <button key={f.k} onClick={() => setFilter(f.k)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                    filter === f.k ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-                  }`}
-                  style={{ background: filter === f.k ? f.color : undefined }}>
+                  className="px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                  style={filter === f.k
+                    ? { background: f.color, color: "#fff" }
+                    : { background: "rgba(0,0,0,0.05)", color: "#64748b", border: "1px solid rgba(0,0,0,0.08)" }}>
                   {f.l} {filter === f.k ? `(${visible.length})` : ""}
                 </button>
               ))}
@@ -181,8 +193,8 @@ export default function PublicMapPage() {
 
           {/* Legend */}
           <div className="p-4">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Map Legend</h3>
-            <div className="space-y-1.5 text-xs">
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Map Legend</h3>
+            <div className="flex flex-col gap-1.5 text-xs">
               {[
                 { c:"#dc2626", l:"Emergency" },
                 { c:"#ef4444", l:"Critical" },
@@ -191,28 +203,29 @@ export default function PublicMapPage() {
                 { c:"#34d399", l:"Resolved" },
               ].map(s => (
                 <div key={s.l} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.c }} />
-                  <span className="text-slate-600">{s.l}</span>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.c }} />
+                  <span className="text-slate-500">{s.l}</span>
                 </div>
               ))}
             </div>
-            <div className="mt-4 p-3 bg-sky-50 rounded-xl border border-sky-100">
-              <p className="text-xs text-sky-700 font-semibold mb-1">File a complaint</p>
-              <p className="text-[11px] text-sky-600">Login to report a civic issue and track its resolution in real-time.</p>
-              <Link to="/signup" className="mt-2 block text-xs font-bold text-sky-600 hover:text-sky-800">
+            <div className="mt-4 p-3 rounded-xl"
+              style={{ background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.2)" }}>
+              <p className="text-xs text-sky-600 font-semibold mb-1">File a complaint</p>
+              <p className="text-[11px] text-sky-500/80">Login to report a civic issue and track its resolution in real-time.</p>
+              <Link to="/signup" className="mt-2 block text-xs font-bold text-sky-500 hover:text-sky-600 transition-colors">
                 Create account →
               </Link>
             </div>
           </div>
         </aside>
 
-        {/* ── Map ── */}
+        {/* Map */}
         <div className="flex-1 relative" style={{ minHeight: 500 }}>
           {MAPBOX_TOKEN ? (
             <Map
               initialViewState={DELHI}
               mapboxAccessToken={MAPBOX_TOKEN}
-              mapStyle="mapbox://styles/mapbox/light-v11"
+              mapStyle="mapbox://styles/mapbox/streets-v12"
               style={{ width:"100%", height:"100%" }}
               onLoad={() => setMapLoaded(true)}
               attributionControl={false}
@@ -226,17 +239,13 @@ export default function PublicMapPage() {
                             : pin.priority === "high" ? 11 : 9;
                 return (
                   <Marker key={pin.id} longitude={pin.lng} latitude={pin.lat} anchor="center">
-                    <div
-                      onClick={() => setPopup(pin)}
+                    <div onClick={() => setPopup(pin)}
                       style={{
-                        width:      size, height: size,
-                        borderRadius:"50%",
-                        background: color,
-                        border:     "1.5px solid white",
-                        cursor:     "pointer",
-                        boxShadow:  `0 0 0 ${["emergency","critical"].includes(pin.priority)?3:0}px ${color}40`,
-                      }}
-                    />
+                        width: size, height: size, borderRadius: "50%",
+                        background: color, border: "2px solid white",
+                        cursor: "pointer",
+                        boxShadow: `0 0 0 ${["emergency","critical"].includes(pin.priority)?4:0}px ${color}40`,
+                      }} />
                   </Marker>
                 );
               })}
@@ -245,10 +254,9 @@ export default function PublicMapPage() {
                 <Popup
                   longitude={popup.lng} latitude={popup.lat}
                   anchor="top" onClose={() => setPopup(null)}
-                  closeButton={false}
-                  className="rounded-xl shadow-xl"
-                >
-                  <div className="p-3 min-w-[200px]">
+                  closeButton={false}>
+                  <div className="p-3 min-w-50"
+                    style={{ background: "rgba(255,255,255,0.97)", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize"
                         style={{ background: (PRIORITY_DOT[popup.priority]||"#6366f1")+"18", color: PRIORITY_DOT[popup.priority]||"#6366f1" }}>
@@ -261,16 +269,16 @@ export default function PublicMapPage() {
                     </div>
                     <p className="font-semibold text-slate-800 text-sm leading-tight">{popup.title}</p>
                     {popup.infra_type_name && (
-                      <p className="text-[11px] text-sky-600 mt-1 font-medium">{popup.infra_type_name}</p>
+                      <p className="text-[11px] text-sky-500 mt-1 font-medium">{popup.infra_type_name}</p>
                     )}
                     {popup.address_text && (
-                      <p className="text-[11px] text-slate-400 mt-1 truncate max-w-[180px]">{popup.address_text}</p>
+                      <p className="text-[11px] text-slate-400 mt-1 truncate max-w-45">{popup.address_text}</p>
                     )}
                     {popup.is_repeat_complaint && (
                       <p className="text-[11px] text-orange-500 font-bold mt-1">↩ Repeat complaint</p>
                     )}
                     <Link to="/login"
-                      className="mt-3 block text-center text-xs font-bold text-sky-600 hover:text-sky-800">
+                      className="mt-3 block text-center text-xs font-bold text-sky-500 hover:text-sky-600 transition-colors">
                       Login to track →
                     </Link>
                   </div>
@@ -278,9 +286,9 @@ export default function PublicMapPage() {
               )}
             </Map>
           ) : (
-            /* Fallback if no Mapbox token */
-            <div className="w-full h-full flex items-center justify-center bg-slate-50">
-              <div className="text-center text-slate-400">
+            <div className="w-full h-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.02)" }}>
+              <div className="text-center text-slate-600">
                 <span className="material-symbols-outlined text-5xl block mb-2">map</span>
                 <p className="text-sm font-medium">Map unavailable</p>
                 <p className="text-xs mt-1">VITE_MAPBOX_TOKEN not configured</p>
@@ -290,9 +298,11 @@ export default function PublicMapPage() {
 
           {/* Loading overlay */}
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm z-10">
-              <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-full shadow-lg border text-sm font-semibold text-slate-600">
-                <span className="material-symbols-outlined animate-spin text-[18px] text-sky-500">progress_activity</span>
+            <div className="absolute inset-0 flex items-center justify-center z-10"
+              style={{ background: "rgba(255,255,255,0.6)", backdropFilter: "blur(4px)" }}>
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold text-slate-600"
+                style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}>
+                <span className="material-symbols-outlined animate-spin text-[18px] text-sky-400">progress_activity</span>
                 Loading live data…
               </div>
             </div>
@@ -300,7 +310,8 @@ export default function PublicMapPage() {
 
           {/* Pin count badge */}
           {!loading && (
-            <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-slate-100 text-xs font-bold text-slate-600 z-10">
+            <div className="absolute bottom-4 left-4 px-3 py-2 rounded-xl text-xs font-bold text-slate-600 z-10"
+              style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
               {visible.length} of {total} complaints shown
             </div>
           )}

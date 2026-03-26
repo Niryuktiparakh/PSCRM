@@ -239,6 +239,10 @@ class InfraNode(Base):
     deletion_reason           = Column(Text)
     created_at                = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at                = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    cluster_ai_summary   = Column(Text)
+    cluster_summary_at   = Column(DateTime(timezone=True))
+    cluster_major_themes = Column(ARRAY(String))
+    cluster_severity     = Column(String(20))
 
 
 class AssetHealthLog(Base):

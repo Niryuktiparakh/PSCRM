@@ -1,22 +1,31 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { MapPin, TriangleAlert } from "lucide-react";
 import { useParams } from "react-router-dom";
 import Map, { Marker, NavigationControl } from "react-map-gl";
-
 import {
   fetchInfraNodeAiSummary,
   fetchNodeHistory,
   fetchNodeRepeatIssues,
 } from "../api/adminApi";
 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+
+function GCard({ children, className = "", style = {} }) {
+  return (
+    <div className={`rounded-2xl p-5 ${className}`}
+      style={{ background: "rgba(255,255,255,0.7)", backdropFilter: "blur(20px)", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 4px 24px rgba(0,0,0,0.06)", ...style }}>
+      {children}
+    </div>
+  );
+}
+
 export default function InfraNodeDetailPage() {
   const { nodeId } = useParams();
 
-  const [history, setHistory] = useState(null);
+  const [history,    setHistory]    = useState(null);
   const [repeatRisk, setRepeatRisk] = useState(null);
-  const [aiData, setAiData] = useState(null);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiData,     setAiData]     = useState(null);
+  const [aiOpen,     setAiOpen]     = useState(false);
+  const [loadingAi,  setLoadingAi]  = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -27,18 +36,18 @@ export default function InfraNodeDetailPage() {
       setRepeatRisk(r);
     }
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [nodeId]);
 
   const nodeLocation = useMemo(() => {
-    const first = history?.complaints?.find((c) => c.lat != null && c.lng != null);
+    const first = history?.complaints?.find(c => c.lat != null && c.lng != null);
     if (!first) return null;
     return { lat: Number(first.lat), lng: Number(first.lng) };
   }, [history]);
 
-  const activeWorkflow = history?.workflow_instances?.find((w) => ["active", "paused", "constraint_blocked"].includes(w.status));
+  const activeWorkflow = history?.workflow_instances?.find(w =>
+    ["active", "paused", "constraint_blocked"].includes(w.status)
+  );
 
   const loadAi = async () => {
     if (aiData || loadingAi || !nodeId) return;
@@ -52,106 +61,137 @@ export default function InfraNodeDetailPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4">
-      <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-900">Infra Node Detail</h1>
-        <p className="text-xs text-slate-500">Node ID: {nodeId}</p>
-      </header>
-
-      {repeatRisk ? (
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <div className="mb-1 inline-flex items-center gap-2 text-amber-800">
-            <TriangleAlert size={16} />
-            <p className="text-sm font-semibold">Repeat Risk</p>
+    <div className="mx-auto max-w-6xl flex flex-col gap-4 p-4">
+      {/* Header */}
+      <GCard>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: "rgba(56,189,248,0.15)" }}>
+            <span className="material-symbols-outlined text-sky-400">lan</span>
           </div>
-          <p className="text-sm text-amber-900">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-800">Infra Node Detail</h1>
+            <p className="text-xs font-mono text-slate-500">ID: {nodeId}</p>
+          </div>
+        </div>
+      </GCard>
+
+      {/* Repeat Risk */}
+      {repeatRisk && (
+        <GCard style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-amber-400 text-[18px]">warning</span>
+            <p className="text-sm font-semibold text-amber-300">Repeat Risk</p>
+          </div>
+          <p className="text-sm text-amber-200/80">
             {repeatRisk.is_within_warranty
               ? "This node appears within repeat/warranty risk window."
               : "No active repeat warranty risk currently."}
           </p>
-          <p className="mt-1 text-xs text-amber-700">
-            Last resolved: {repeatRisk.last_resolved_at || "-"} · Gap days: {repeatRisk.gap_days ?? "-"}
+          <p className="mt-1 text-xs text-amber-400/60">
+            Last resolved: {repeatRisk.last_resolved_at || "—"} · Gap days: {repeatRisk.gap_days ?? "—"}
           </p>
-        </section>
-      ) : null}
+        </GCard>
+      )}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Complaint Timeline</h2>
-        <div className="space-y-2">
-          {(history?.complaints || []).map((c) => (
-            <div key={c.id} className="rounded-lg border border-slate-200 p-3">
+      {/* Complaint Timeline */}
+      <GCard>
+        <h2 className="text-sm font-semibold text-white mb-3">Complaint Timeline</h2>
+        <div className="flex flex-col gap-2">
+          {(history?.complaints || []).map(c => (
+            <div key={c.id} className="rounded-xl p-3"
+              style={{ background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.06)" }}>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-900">{c.complaint_number}</p>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">{c.status}</span>
+                <p className="text-sm font-medium text-slate-700">{c.complaint_number}</p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase"
+                  style={{ background: "rgba(0,0,0,0.06)", color: "#64748b" }}>
+                  {c.status}
+                </span>
               </div>
-              <p className="mt-1 text-xs text-slate-600">{c.title}</p>
-              <p className="mt-1 text-[11px] text-slate-500">Created: {c.created_at || "-"}</p>
+              <p className="mt-1 text-xs text-slate-400">{c.title}</p>
+              <p className="mt-1 text-[11px] text-slate-600">Created: {c.created_at || "—"}</p>
             </div>
           ))}
-          {!history?.complaints?.length ? <p className="text-sm text-slate-500">No complaints linked yet.</p> : null}
+          {!history?.complaints?.length && (
+            <p className="text-sm text-slate-600">No complaints linked yet.</p>
+          )}
         </div>
-      </section>
+      </GCard>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 text-sm font-semibold text-slate-900">Active Workflow</h2>
+      {/* Active Workflow */}
+      <GCard>
+        <h2 className="text-sm font-semibold text-slate-800 mb-2">Active Workflow</h2>
         {activeWorkflow ? (
-          <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-            <p>ID: {activeWorkflow.id}</p>
-            <p>Status: {activeWorkflow.status}</p>
-            <p>Created: {activeWorkflow.created_at || "-"}</p>
+          <div className="rounded-xl p-3 text-sm"
+            style={{ background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.15)" }}>
+            <p className="text-slate-600">ID: <span className="font-mono text-xs text-slate-400">{activeWorkflow.id}</span></p>
+            <p className="text-slate-300 mt-1">Status: <span className="text-sky-400 font-medium">{activeWorkflow.status}</span></p>
+            <p className="text-slate-500 text-xs mt-1">Created: {activeWorkflow.created_at || "—"}</p>
           </div>
         ) : (
-          <p className="text-sm text-slate-500">No active workflow instance.</p>
+          <p className="text-sm text-slate-600">No active workflow instance.</p>
         )}
-      </section>
+      </GCard>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">AI Analysis</h2>
-          <button
-            type="button"
-            onClick={() => {
-              const next = !aiOpen;
-              setAiOpen(next);
-              if (next) loadAi();
-            }}
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
-          >
+      {/* AI Analysis */}
+      <GCard>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span className="material-symbols-outlined text-[16px] text-violet-400">auto_awesome</span>
+            AI Analysis
+          </h2>
+          <button type="button"
+            onClick={() => { const next = !aiOpen; setAiOpen(next); if (next) loadAi(); }}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium text-white transition-colors"
+            style={{ background: aiOpen ? "rgba(139,92,246,0.2)" : "rgba(255,255,255,0.08)", border: "1px solid rgba(139,92,246,0.3)" }}>
             {aiOpen ? "Hide" : "Load AI Analysis"}
           </button>
         </div>
-        {aiOpen ? (
+        {aiOpen && (
           loadingAi ? (
-            <p className="text-sm text-slate-500">Loading AI analysis...</p>
+            <div className="flex items-center gap-2 text-slate-500 text-sm">
+              <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
+              Loading AI analysis…
+            </div>
           ) : (
-            <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+            <pre className="overflow-x-auto rounded-xl p-3 text-xs text-slate-300"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
               {JSON.stringify(aiData || {}, null, 2)}
             </pre>
           )
-        ) : null}
-      </section>
+        )}
+      </GCard>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 inline-flex items-center gap-1 text-sm font-semibold text-slate-900">
-          <MapPin size={14} /> Map
+      {/* Map */}
+      <GCard>
+        <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <span className="material-symbols-outlined text-[16px] text-sky-400">map</span>
+          Location
         </h2>
-        <div className="h-64 overflow-hidden rounded-lg border border-slate-200">
+        <div className="rounded-xl overflow-hidden" style={{ height: 260, border: "1px solid rgba(255,255,255,0.08)" }}>
           <Map
             initialViewState={{
               longitude: nodeLocation?.lng || 77.209,
-              latitude: nodeLocation?.lat || 28.6139,
+              latitude:  nodeLocation?.lat || 28.6139,
               zoom: nodeLocation ? 15 : 11,
+              pitch: 40,
             }}
             mapStyle="mapbox://styles/mapbox/streets-v12"
-            mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
-          >
-            <NavigationControl position="top-right" />
-            {nodeLocation ? (
-              <Marker longitude={nodeLocation.lng} latitude={nodeLocation.lat} color="#0f172a" />
-            ) : null}
+            mapboxAccessToken={MAPBOX_TOKEN}
+            style={{ width: "100%", height: "100%" }}>
+            <NavigationControl position="top-right" showCompass visualizePitch />
+            {nodeLocation && (
+              <Marker longitude={nodeLocation.lng} latitude={nodeLocation.lat} anchor="center">
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%",
+                  background: "#38bdf8", border: "3px solid white",
+                  boxShadow: "0 0 12px rgba(56,189,248,0.8)",
+                }} />
+              </Marker>
+            )}
           </Map>
         </div>
-      </section>
+      </GCard>
     </div>
   );
 }

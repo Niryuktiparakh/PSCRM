@@ -41,15 +41,15 @@ const STATUS_LABEL = {
 };
 
 const STATUS_PILL = {
-  received:          { bg: "#eef2ff", color: "#6366f1" },
-  workflow_started:  { bg: "#eff6ff", color: "#3b82f6" },
-  in_progress:       { bg: "#fff7ed", color: "#f97316" },
-  resolved:          { bg: "#f0fdf4", color: "#10b981" },
-  closed:            { bg: "#f0fdf4", color: "#10b981" },
-  rejected:          { bg: "#fef2f2", color: "#ef4444" },
-  escalated:         { bg: "#fef2f2", color: "#ef4444" },
-  emergency:         { bg: "#fef2f2", color: "#dc2626" },
-  constraint_blocked:{ bg: "#fffbeb", color: "#d97706" },
+  received:          { bg: "rgba(99,102,241,0.2)",  color: "#818cf8" },
+  workflow_started:  { bg: "rgba(56,189,248,0.18)", color: "#38bdf8" },
+  in_progress:       { bg: "rgba(251,146,60,0.2)",  color: "#fb923c" },
+  resolved:          { bg: "rgba(52,211,153,0.18)", color: "#34d399" },
+  closed:            { bg: "rgba(52,211,153,0.18)", color: "#34d399" },
+  rejected:          { bg: "rgba(248,113,113,0.18)",color: "#f87171" },
+  escalated:         { bg: "rgba(248,113,113,0.18)",color: "#f87171" },
+  emergency:         { bg: "rgba(239,68,68,0.2)",   color: "#ef4444" },
+  constraint_blocked:{ bg: "rgba(217,119,6,0.18)",  color: "#fbbf24" },
 };
 
 // Status-based opacity — resolved/closed/rejected fade out
@@ -64,11 +64,11 @@ const BUILDINGS_LAYER = {
   paint: {
     "fill-extrusion-color": [
       "interpolate", ["linear"], ["get", "height"],
-      0, "#dde3ea", 40, "#c5cdd8", 100, "#9aaabb", 200, "#758799",
+      0, "#dde3ea", 40, "#c8d0da", 100, "#b0bcc9", 200, "#9aaabb",
     ],
     "fill-extrusion-height": ["get", "height"],
     "fill-extrusion-base":   ["get", "min_height"],
-    "fill-extrusion-opacity": 0.72,
+    "fill-extrusion-opacity": 0.65,
   },
 };
 
@@ -259,11 +259,12 @@ function HoverPopup({ pin }) {
       maxWidth="300px" style={{ zIndex: 1000 }}
     >
       <div style={{
-        background:   "white",
+        background:   "rgba(255,255,255,0.96)",
+        backdropFilter: "blur(20px)",
         borderRadius: 14,
         overflow:     "hidden",
         width:        280,
-        boxShadow:    "0 12px 40px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)",
+        boxShadow:    "0 12px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08)",
         fontFamily:   "system-ui, -apple-system, sans-serif",
       }}>
 
@@ -348,7 +349,7 @@ function HoverPopup({ pin }) {
         <div style={{ padding: "12px 14px 14px" }}>
 
           {/* Title */}
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", lineHeight: 1.4, margin: "0 0 10px" }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", lineHeight: 1.4, margin: "0 0 10px" }}>
             {pin.title?.length > 72 ? pin.title.slice(0, 69) + "…" : pin.title}
           </p>
 
@@ -395,12 +396,12 @@ function HoverPopup({ pin }) {
           <div style={{
             marginTop:    2,
             paddingTop:   10,
-            borderTop:    "1px solid #f1f5f9",
+            borderTop:    "1px solid rgba(0,0,0,0.08)",
             display:      "flex",
             alignItems:   "center",
             justifyContent:"space-between",
           }}>
-            <span style={{ fontSize: 10, color: "#94a3b8" }}>Click pin to view full details</span>
+            <span style={{ fontSize: 10, color: "#64748b" }}>Click pin to view full details</span>
             <div style={{
               display:      "flex", alignItems: "center", gap: 3,
               background:   infra.color,
@@ -433,12 +434,12 @@ function MapStats({ pins, radiusKm }) {
         { label: "Critical",             value: critical, color: "#ef4444" },
       ].map(({ label, value, color }) => (
         <div key={label} style={{
-          background: "rgba(255,255,255,0.93)", backdropFilter: "blur(12px)",
-          border: `1px solid ${color}20`, borderLeft: `3px solid ${color}`,
+          background: "rgba(255,255,255,0.9)", backdropFilter: "blur(12px)",
+          border: `1px solid ${color}30`, borderLeft: `3px solid ${color}`,
           borderRadius: "0 10px 10px 0", padding: "6px 12px",
           display: "flex", alignItems: "center", justifyContent: "space-between",
           gap: 16, minWidth: 140,
-          boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
         }}>
           <span style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
           <span style={{ fontSize: 17, fontWeight: 800, color, fontFamily: "monospace", lineHeight: 1 }}>{value}</span>
@@ -462,12 +463,12 @@ function MapLegend({ pins }) {
   return (
     <div style={{
       position: "absolute", bottom: 40, left: 12, zIndex: 10,
-      background: "rgba(255,255,255,0.93)", backdropFilter: "blur(12px)",
-      border: "1px solid rgba(99,102,241,0.12)", borderRadius: 12,
+      background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)",
+      border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12,
       padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6,
       boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
     }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>
         Infrastructure
       </span>
       {shown.map(([code, count]) => {
@@ -475,7 +476,7 @@ function MapLegend({ pins }) {
         return (
           <div key={code} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 15 }}>{cfg.emoji}</span>
-            <span style={{ fontSize: 11, color: "#334155", flex: 1 }}>{cfg.label}</span>
+            <span style={{ fontSize: 11, color: "#475569", flex: 1 }}>{cfg.label}</span>
             <span style={{
               fontSize: 10, fontWeight: 800, color: "white",
               background: cfg.color, padding: "1px 6px", borderRadius: 99,
@@ -575,18 +576,18 @@ export default function ComplaintMap({
       <div className={className} style={{
         position: "relative", height,
         borderRadius: 16, overflow: "hidden",
-        border: "1px solid rgba(99,102,241,0.15)",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(99,102,241,0.06)",
+        border: "1px solid rgba(0,0,0,0.08)",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.1)",
       }}>
 
         {/* Status pill */}
         <div style={{
           position: "absolute", top: 12, left: 12, zIndex: 10,
-          background: "rgba(255,255,255,0.93)", backdropFilter: "blur(12px)",
-          border: "1px solid rgba(99,102,241,0.18)", borderRadius: 999,
+          background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)",
+          border: "1px solid rgba(0,0,0,0.08)", borderRadius: 999,
           padding: "5px 13px", display: "flex", alignItems: "center", gap: 7,
-          fontSize: 11, fontWeight: 600, color: "#1e293b",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.07)",
+          fontSize: 11, fontWeight: 600, color: "#475569",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
         }}>
           <span style={{
             width: 7, height: 7, borderRadius: "50%",
@@ -602,8 +603,8 @@ export default function ComplaintMap({
         {/* 3D hint */}
         <div style={{
           position: "absolute", bottom: 40, right: 12, zIndex: 10,
-          background: "rgba(255,255,255,0.88)", backdropFilter: "blur(8px)",
-          border: "1px solid rgba(99,102,241,0.12)", borderRadius: 8,
+          background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)",
+          border: "1px solid rgba(0,0,0,0.08)", borderRadius: 8,
           padding: "4px 9px", fontSize: 10, color: "#64748b", fontWeight: 600,
           display: "flex", alignItems: "center", gap: 4,
         }}>

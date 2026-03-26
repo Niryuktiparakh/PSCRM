@@ -1,6 +1,5 @@
 // src/pages/admin/UserManagementPage.jsx
 // Super Admin — create and manage officials, workers, admins, contractors.
-// Calls POST /admin/users (Firebase + DB), PATCH /admin/users/{id}, GET /admin/users.
 
 import { useEffect, useState, useCallback } from "react";
 import AppLayout from "../../components/AppLayout";
@@ -27,7 +26,7 @@ function RoleBadge({ role, size = "sm" }) {
   const sz = size === "xs" ? "text-[10px] px-1.5 py-0.5" : "text-xs px-2.5 py-1";
   return (
     <span className={`${sz} rounded-full font-bold capitalize inline-flex items-center gap-1`}
-      style={{ background: m.color + "18", color: m.color }}>
+      style={{ background: m.color + "22", color: m.color }}>
       <span className="material-symbols-outlined text-[12px]">{m.icon}</span>
       {m.label}
     </span>
@@ -46,13 +45,33 @@ function Avatar({ name, color }) {
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-slate-50">
+    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
       {[1,2,3,4,5].map(i => (
         <td key={i} className="px-4 py-3">
-          <div className="h-4 bg-slate-100 rounded animate-pulse" />
+          <div className="h-4 rounded animate-pulse" style={{ background: "rgba(255,255,255,0.06)" }} />
         </td>
       ))}
     </tr>
+  );
+}
+
+// ── Field ─────────────────────────────────────────────────────────
+
+function Field({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div>
+      {label && (
+        <label className="text-xs font-bold uppercase tracking-wider block mb-1.5"
+          style={{ color: "#475569" }}>{label}</label>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="ginput w-full px-3 py-2.5 rounded-xl text-sm"
+      />
+    </div>
   );
 }
 
@@ -72,7 +91,6 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
   });
   const [saving, setSaving] = useState(false);
 
-  // Prefill when editing
   useEffect(() => {
     if (editUser) {
       setForm({
@@ -100,7 +118,6 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
     if (!form.department_id && ["official","admin","worker"].includes(form.role)) {
       toast.error("Department is required for this role"); return;
     }
-
     setSaving(true);
     try {
       if (isEdit) {
@@ -115,9 +132,7 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
       } else {
         const res = await createStaffUser(form);
         toast.success(`User created! Temp password: ${res.temp_password}`);
-        if (res.reset_link) {
-          toast.info("Password reset link generated — share with user", { duration: 8000 });
-        }
+        if (res.reset_link) toast.info("Password reset link generated — share with user", { duration: 8000 });
       }
       onSuccess();
       onClose();
@@ -131,45 +146,52 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
   const roleMeta = ROLE_META[form.role];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/50 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-lg bg-white flex flex-col shadow-2xl overflow-y-auto">
+      <div className="w-full max-w-lg flex flex-col overflow-y-auto"
+        style={{ background: "rgba(8,15,32,0.98)", backdropFilter: "blur(24px)", borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
+
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-100">
+        <div className="flex items-center gap-3 px-6 py-5"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: (roleMeta?.color || "#6366f1") + "18" }}>
+            style={{ background: (roleMeta?.color || "#6366f1") + "22" }}>
             <span className="material-symbols-outlined text-[20px]"
               style={{ color: roleMeta?.color || "#6366f1" }}>
               {isEdit ? "edit" : "person_add"}
             </span>
           </div>
           <div className="flex-1">
-            <h2 className="font-black text-slate-900 text-lg">{isEdit ? "Edit User" : "Create New User"}</h2>
-            <p className="text-xs text-slate-400">{isEdit ? `Editing ${editUser?.full_name}` : "Creates Firebase account + DB record"}</p>
+            <h2 className="font-black text-white text-lg">{isEdit ? "Edit User" : "Create New User"}</h2>
+            <p className="text-xs text-slate-500">{isEdit ? `Editing ${editUser?.full_name}` : "Creates Firebase account + DB record"}</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
-            <span className="material-symbols-outlined text-slate-400">close</span>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ background: "rgba(255,255,255,0.06)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
+            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}>
+            <span className="material-symbols-outlined text-slate-400 text-[18px]">close</span>
           </button>
         </div>
 
         {/* Body */}
         <div className="flex-1 p-6 flex flex-col gap-5">
-          {/* Role selection — always first */}
+          {/* Role selection */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3">Role *</label>
+            <label className="text-xs font-bold uppercase tracking-wider block mb-3"
+              style={{ color: "#475569" }}>Role *</label>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(ROLE_META).filter(([k]) => k !== "citizen").map(([k, m]) => (
+              {Object.entries(ROLE_META).map(([k, m]) => (
                 <button key={k} type="button" onClick={() => set("role", k)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    form.role === k ? "shadow-sm" : "border-slate-100 hover:border-slate-200"
-                  }`}
+                  className="p-3 rounded-xl text-left transition-all"
                   style={{
-                    borderColor: form.role === k ? m.color : undefined,
-                    background:  form.role === k ? m.color + "08" : undefined,
+                    background:  form.role === k ? m.color + "15" : "rgba(255,255,255,0.04)",
+                    border:      `1px solid ${form.role === k ? m.color + "50" : "rgba(255,255,255,0.08)"}`,
                   }}>
                   <span className="material-symbols-outlined text-[18px] block mb-1" style={{ color: m.color }}>{m.icon}</span>
-                  <p className="font-bold text-slate-800 text-xs">{m.label}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{m.desc}</p>
+                  <p className="font-bold text-sm" style={{ color: form.role === k ? "#f1f5f9" : "#94a3b8" }}>{m.label}</p>
+                  <p className="text-[10px] mt-0.5 leading-tight text-slate-600">{m.desc}</p>
                 </button>
               ))}
             </div>
@@ -178,12 +200,10 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
           {/* Basic info */}
           <div className="grid grid-cols-1 gap-4">
             <Field label="Full Name *" value={form.full_name} onChange={v => set("full_name", v)} placeholder="e.g. Rajesh Kumar" />
-
             {!isEdit && (
               <Field label="Email *" type="email" value={form.email} onChange={v => set("email", v.toLowerCase())}
                 placeholder="e.g. rajesh.kumar@mcd.delhi.gov.in" />
             )}
-
             <Field label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)}
               placeholder="+91 98765 43210" />
           </div>
@@ -191,11 +211,12 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
           {/* Department */}
           {["official", "admin", "super_admin", "worker"].includes(form.role) && (
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
+              <label className="text-xs font-bold uppercase tracking-wider block mb-2"
+                style={{ color: "#475569" }}>
                 Department {["official","admin","worker"].includes(form.role) ? "*" : ""}
               </label>
               <select value={form.department_id} onChange={e => set("department_id", e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 bg-white">
+                className="ginput w-full px-3 py-2.5 rounded-xl text-sm">
                 <option value="">Select department…</option>
                 {departments.map(d => (
                   <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
@@ -206,26 +227,29 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
 
           {/* Language */}
           <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Preferred Language</label>
+            <label className="text-xs font-bold uppercase tracking-wider block mb-2"
+              style={{ color: "#475569" }}>Preferred Language</label>
             <div className="flex gap-2">
               {[["hi","हिंदी"], ["en","English"]].map(([v, l]) => (
                 <button key={v} type="button" onClick={() => set("preferred_language", v)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-bold border transition ${
-                    form.preferred_language === v
-                      ? "bg-sky-600 text-white border-sky-600"
-                      : "bg-white text-slate-600 border-slate-200"
-                  }`}>{l}</button>
+                  className="flex-1 py-2 rounded-xl text-sm font-bold transition-all"
+                  style={{
+                    background: form.preferred_language === v ? "rgba(56,189,248,0.2)" : "rgba(255,255,255,0.04)",
+                    border:     `1px solid ${form.preferred_language === v ? "rgba(56,189,248,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    color:      form.preferred_language === v ? "#38bdf8" : "#64748b",
+                  }}>{l}</button>
               ))}
             </div>
           </div>
 
-          {/* Temp password — only for create */}
+          {/* Temp password */}
           {!isEdit && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <p className="text-xs font-bold text-amber-700 mb-2">⚠️ Temporary Password</p>
+            <div className="rounded-xl p-4"
+              style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+              <p className="text-xs font-bold text-amber-400 mb-2">Temporary Password</p>
               <Field label="" value={form.temp_password} onChange={v => set("temp_password", v)}
                 placeholder="Temporary password" />
-              <p className="text-[10px] text-amber-600 mt-2">
+              <p className="text-[10px] text-amber-600/80 mt-2">
                 Share this with the user. They can change it after first login.
                 A password reset link is also auto-generated.
               </p>
@@ -234,9 +258,9 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6 pt-3 border-t border-slate-100">
+        <div className="px-6 pb-6 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <button onClick={handleSubmit} disabled={saving}
-            className="w-full py-3.5 rounded-xl font-black text-sm text-white disabled:opacity-40 transition"
+            className="w-full py-3.5 rounded-xl font-black text-sm text-white disabled:opacity-40 transition-all"
             style={{ background: roleMeta?.color || "#6366f1" }}>
             {saving ? (isEdit ? "Updating…" : "Creating Account…") : (isEdit ? "Save Changes" : "Create User & Firebase Account")}
           </button>
@@ -246,42 +270,35 @@ function UserDrawer({ open, onClose, editUser, departments, onSuccess }) {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text" }) {
-  return (
-    <div>
-      {label && <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">{label}</label>}
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-200"
-      />
-    </div>
-  );
-}
-
 // ── Deactivate confirm ────────────────────────────────────────────
 
 function ConfirmModal({ open, onClose, onConfirm, name, loading }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-        <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-          <span className="material-symbols-outlined text-red-500 text-[24px]">person_off</span>
+      <div className="w-full max-w-sm rounded-2xl p-6"
+        style={{ background: "rgba(8,15,32,0.98)", border: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+          style={{ background: "rgba(239,68,68,0.15)" }}>
+          <span className="material-symbols-outlined text-red-400 text-[24px]">person_off</span>
         </div>
-        <h3 className="font-black text-slate-900 text-center text-lg mb-1">Deactivate User?</h3>
-        <p className="text-sm text-slate-500 text-center mb-5">
-          This will prevent <strong>{name}</strong> from logging in and disable their Firebase account.
+        <h3 className="font-black text-white text-center text-lg mb-1">Deactivate User?</h3>
+        <p className="text-sm text-slate-400 text-center mb-5">
+          This will prevent <strong className="text-slate-200">{name}</strong> from logging in and disable their Firebase account.
         </p>
         <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-400 transition-colors"
+            style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+            onMouseLeave={e => e.currentTarget.style.background = ""}>
             Cancel
           </button>
           <button onClick={onConfirm} disabled={loading}
-            className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold disabled:opacity-40">
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40"
+            style={{ background: "rgba(239,68,68,0.8)" }}>
             {loading ? "Deactivating…" : "Deactivate"}
           </button>
         </div>
@@ -319,10 +336,7 @@ export default function UserManagementPage() {
     try {
       const params = {};
       if (roleFilter) params.role = roleFilter;
-      const [u, d] = await Promise.all([
-        fetchStaffUsers(params),
-        fetchDepartments(),
-      ]);
+      const [u, d] = await Promise.all([fetchStaffUsers(params), fetchDepartments()]);
       setUsers(u || []);
       setDepartments(d || []);
     } catch { toast.error("Failed to load users"); }
@@ -360,7 +374,6 @@ export default function UserManagementPage() {
   const openCreate = () => { setEditUser(null); setDrawerOpen(true); };
   const openEdit   = (u)  => { setEditUser(u);  setDrawerOpen(true); };
 
-  // Stats summary
   const stats = ROLE_FILTER_OPTIONS.slice(1).map(o => ({
     ...o,
     count: users.filter(u => u.role === o.v).length,
@@ -375,14 +388,13 @@ export default function UserManagementPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-900">User Management</h1>
-            <p className="text-sm text-slate-400 mt-0.5">
+            <h1 className="text-2xl font-black text-white">User Management</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
               {isSuperAdmin ? "Create and manage all staff accounts" : "View staff in your department"}
             </p>
           </div>
           {isSuperAdmin && (
-            <button onClick={openCreate}
-              className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-bold hover:bg-sky-700 transition shadow-sm">
+            <button onClick={openCreate} className="gbtn-sky flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold">
               <span className="material-symbols-outlined text-[18px]">person_add</span>
               Create User
             </button>
@@ -393,20 +405,17 @@ export default function UserManagementPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {stats.map(s => (
             <button key={s.v} onClick={() => setRoleFilter(s.v === roleFilter ? "" : s.v)}
-              className={`bg-white rounded-2xl p-4 border text-left transition-all hover:shadow-md ${
-                roleFilter === s.v ? "ring-2 shadow-sm" : ""
-              }`}
+              className="rounded-2xl p-4 text-left transition-all"
               style={{
-                borderColor:  s.color + "30",
-                ringColor:    s.color,
-                outlineColor: roleFilter === s.v ? s.color : "transparent",
-                outline:      roleFilter === s.v ? `2px solid ${s.color}` : undefined,
+                background:  roleFilter === s.v ? s.color + "18" : "rgba(255,255,255,0.04)",
+                border:      `1px solid ${roleFilter === s.v ? s.color + "40" : "rgba(255,255,255,0.08)"}`,
+                backdropFilter: "blur(20px)",
               }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="material-symbols-outlined text-[20px]" style={{ color: s.color }}>{s.icon}</span>
                 <span className="text-2xl font-black" style={{ color: s.color }}>{s.count}</span>
               </div>
-              <p className="text-xs font-bold text-slate-600">{s.l}</p>
+              <p className="text-xs font-bold text-slate-400">{s.l}</p>
             </button>
           ))}
         </div>
@@ -414,41 +423,44 @@ export default function UserManagementPage() {
         {/* Search + filter bar */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-[18px]">search</span>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search by name, email, department…"
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-200" />
+              className="ginput w-full pl-10 pr-4 py-2.5 rounded-xl text-sm" />
           </div>
           <div className="flex gap-2 flex-wrap">
             {ROLE_FILTER_OPTIONS.map(o => (
               <button key={o.v} onClick={() => setRoleFilter(o.v)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold border transition ${
-                  roleFilter === o.v
-                    ? "bg-sky-600 text-white border-sky-600"
-                    : "bg-white text-slate-500 border-slate-200 hover:border-sky-300"
-                }`}>{o.l}</button>
+                className="px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                style={{
+                  background: roleFilter === o.v ? "rgba(56,189,248,0.2)" : "rgba(255,255,255,0.04)",
+                  border:     `1px solid ${roleFilter === o.v ? "rgba(56,189,248,0.4)" : "rgba(255,255,255,0.08)"}`,
+                  color:      roleFilter === o.v ? "#38bdf8" : "#64748b",
+                }}>{o.l}</button>
             ))}
           </div>
         </div>
 
         {/* User table */}
-        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+
           {/* Mobile: card list */}
           <div className="block md:hidden">
             {loading ? (
               Array(4).fill(0).map((_,i) => (
-                <div key={i} className="p-4 border-b border-slate-50">
+                <div key={i} className="p-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 animate-pulse" />
+                    <div className="w-10 h-10 rounded-full animate-pulse" style={{ background: "rgba(255,255,255,0.06)" }} />
                     <div className="flex-1 flex flex-col gap-1.5">
-                      <div className="h-3 bg-slate-100 rounded animate-pulse w-32" />
-                      <div className="h-3 bg-slate-100 rounded animate-pulse w-48" />
+                      <div className="h-3 rounded animate-pulse w-32" style={{ background: "rgba(255,255,255,0.06)" }} />
+                      <div className="h-3 rounded animate-pulse w-48" style={{ background: "rgba(255,255,255,0.04)" }} />
                     </div>
                   </div>
                 </div>
               ))
             ) : visible.length === 0 ? (
-              <div className="text-center py-16 text-slate-400">
+              <div className="text-center py-16 text-slate-600">
                 <span className="material-symbols-outlined text-5xl block mb-2">group_off</span>
                 <p className="text-sm">No users found</p>
               </div>
@@ -462,19 +474,20 @@ export default function UserManagementPage() {
           {/* Desktop: table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
+              <thead>
+                <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {["User","Role","Department","Contact","Status","Actions"].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider"
+                      style={{ color: "#475569" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody>
                 {loading ? (
                   Array(6).fill(0).map((_,i) => <SkeletonRow key={i} />)
                 ) : visible.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-16 text-slate-400">
+                    <td colSpan={6} className="text-center py-16" style={{ color: "#475569" }}>
                       <span className="material-symbols-outlined text-5xl block mb-2">group_off</span>
                       No users found
                     </td>
@@ -489,15 +502,13 @@ export default function UserManagementPage() {
           </div>
         </div>
 
-        {/* Count */}
         {!loading && (
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-slate-600 text-center">
             {visible.length} of {users.length} staff members shown
           </p>
         )}
       </div>
 
-      {/* Drawers & Modals */}
       <UserDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -505,7 +516,6 @@ export default function UserManagementPage() {
         departments={departments}
         onSuccess={load}
       />
-
       <ConfirmModal
         open={Boolean(deactivateTarget)}
         onClose={() => setDeactivateTarget(null)}
@@ -513,7 +523,6 @@ export default function UserManagementPage() {
         name={deactivateTarget?.full_name}
         loading={deactivating}
       />
-
       <CRMAgentChat />
     </AppLayout>
   );
@@ -524,18 +533,22 @@ export default function UserManagementPage() {
 function UserRow({ user, isSuperAdmin, onEdit, onDeactivate }) {
   const m = ROLE_META[user.role];
   return (
-    <tr className="hover:bg-slate-50 transition-colors group">
+    <tr className="group transition-colors"
+      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+      onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+      onMouseLeave={e => e.currentTarget.style.background = ""}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <Avatar name={user.full_name} color={m?.color} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-bold text-slate-800 text-sm">{user.full_name}</p>
+              <p className="font-bold text-white text-sm">{user.full_name}</p>
               {!user.has_firebase_auth && (
-                <span className="text-[10px] text-amber-500 font-bold bg-amber-50 px-1.5 py-0.5 rounded">No Firebase</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>No Firebase</span>
               )}
             </div>
-            <p className="text-xs text-slate-400 truncate max-w-[180px]">{user.email}</p>
+            <p className="text-xs text-slate-500 truncate max-w-[180px]">{user.email}</p>
           </div>
         </div>
       </td>
@@ -543,27 +556,26 @@ function UserRow({ user, isSuperAdmin, onEdit, onDeactivate }) {
         <RoleBadge role={user.role} size="xs" />
       </td>
       <td className="px-4 py-3">
-        <p className="text-sm text-slate-700">{user.dept_name || "—"}</p>
-        <p className="text-[10px] text-slate-400">{user.jurisdiction_name || ""}</p>
+        <p className="text-sm text-slate-300">{user.dept_name || "—"}</p>
+        <p className="text-[10px] text-slate-500">{user.jurisdiction_name || ""}</p>
       </td>
       <td className="px-4 py-3">
-        <p className="text-sm text-slate-600">{user.phone || "—"}</p>
+        <p className="text-sm text-slate-400">{user.phone || "—"}</p>
         {user.worker_score && (
           <div className="flex items-center gap-1 mt-0.5">
             <span className="text-amber-400 text-[11px]">★</span>
             <span className="text-[11px] text-slate-500">{user.worker_score.toFixed(1)}</span>
             {user.current_task_count > 0 && (
-              <span className="text-[10px] text-sky-500 ml-1">{user.current_task_count} tasks</span>
+              <span className="text-[10px] text-sky-400 ml-1">{user.current_task_count} tasks</span>
             )}
           </div>
         )}
       </td>
       <td className="px-4 py-3">
-        <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-          user.is_active
-            ? "bg-green-50 text-green-600"
-            : "bg-red-50 text-red-500"
-        }`}>
+        <span className="text-xs font-bold px-2 py-1 rounded-full"
+          style={user.is_active
+            ? { background: "rgba(52,211,153,0.15)", color: "#34d399" }
+            : { background: "rgba(239,68,68,0.15)",  color: "#f87171" }}>
           {user.is_active ? "Active" : "Inactive"}
         </span>
       </td>
@@ -571,12 +583,18 @@ function UserRow({ user, isSuperAdmin, onEdit, onDeactivate }) {
         {isSuperAdmin && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={onEdit}
-              className="p-1.5 hover:bg-sky-50 rounded-lg text-sky-600 transition">
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: "#38bdf8" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(56,189,248,0.12)"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}>
               <span className="material-symbols-outlined text-[18px]">edit</span>
             </button>
             {user.is_active && (
               <button onClick={onDeactivate}
-                className="p-1.5 hover:bg-red-50 rounded-lg text-red-500 transition">
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: "#f87171" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.12)"}
+                onMouseLeave={e => e.currentTarget.style.background = ""}>
                 <span className="material-symbols-outlined text-[18px]">person_off</span>
               </button>
             )}
@@ -592,29 +610,38 @@ function UserRow({ user, isSuperAdmin, onEdit, onDeactivate }) {
 function MobileUserCard({ user, isSuperAdmin, onEdit, onDeactivate }) {
   const m = ROLE_META[user.role];
   return (
-    <div className="p-4 border-b border-slate-50 last:border-0">
+    <div className="p-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
       <div className="flex items-start gap-3">
         <Avatar name={user.full_name} color={m?.color} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="font-bold text-slate-800 text-sm">{user.full_name}</p>
+            <p className="font-bold text-white text-sm">{user.full_name}</p>
             <RoleBadge role={user.role} size="xs" />
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-              user.is_active ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"
-            }`}>{user.is_active ? "Active" : "Inactive"}</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={user.is_active
+                ? { background: "rgba(52,211,153,0.15)", color: "#34d399" }
+                : { background: "rgba(239,68,68,0.15)",  color: "#f87171" }}>
+              {user.is_active ? "Active" : "Inactive"}
+            </span>
           </div>
-          <p className="text-xs text-slate-400">{user.email}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{user.dept_name || "No department"}</p>
-          {user.phone && <p className="text-xs text-slate-400">{user.phone}</p>}
+          <p className="text-xs text-slate-500">{user.email}</p>
+          <p className="text-xs text-slate-600 mt-0.5">{user.dept_name || "No department"}</p>
+          {user.phone && <p className="text-xs text-slate-500">{user.phone}</p>}
         </div>
         {isSuperAdmin && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={onEdit} className="p-2 hover:bg-sky-50 rounded-xl text-sky-600">
-              <span className="material-symbols-outlined text-[18px]">edit</span>
+            <button onClick={onEdit}
+              className="p-2 rounded-xl transition-colors"
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(56,189,248,0.12)"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}>
+              <span className="material-symbols-outlined text-[18px] text-sky-400">edit</span>
             </button>
             {user.is_active && (
-              <button onClick={onDeactivate} className="p-2 hover:bg-red-50 rounded-xl text-red-500">
-                <span className="material-symbols-outlined text-[18px]">person_off</span>
+              <button onClick={onDeactivate}
+                className="p-2 rounded-xl transition-colors"
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.12)"}
+                onMouseLeave={e => e.currentTarget.style.background = ""}>
+                <span className="material-symbols-outlined text-[18px] text-red-400">person_off</span>
               </button>
             )}
           </div>

@@ -43,7 +43,7 @@ def _ensure_vertex():
     _vertex_initialized = True
 
 
-def _call_gemini_json(prompt: str, max_tokens: int = 600) -> str:
+def _call_gemini_json(prompt: str, max_tokens: int = 3048) -> str:
     _ensure_vertex()
     model = GenerativeModel(
         "gemini-2.5-flash",
@@ -142,47 +142,46 @@ def suggest_workflows(
     template_map = {str(c["id"]): c for c in candidates}
     version_map  = {str(c["id"]): str(c["version_id"]) for c in candidates}
 
-    template_list = "\n".join(
-        f'  id="{c["id"]}" name="{c["name"]}" '
-        f'situation="{c["situation_summary"] or "General"}" '
-        f'infra_codes={c["situation_infra_codes"] or []} '
-        f'steps={c["step_count"]} used={c["times_used"]} avg_days={c["avg_completion_days"]}'
-        for c in candidates
-    )
+    def score_template(t):
+        score = 0
+        
+        # infra match
+        infra_codes = t["situation_infra_codes"] or []
+        if infra_type_code and infra_type_code in infra_codes:
+            score += 3
+            
+        # keyword match (simple)
+        keywords = t["situation_keywords"] or []
+        kw_matches = sum(1 for kw in keywords if kw.lower() in (complaint_summary or "").lower())
+        score += min(kw_matches, 3)
+            
+        # repeat handling
+        if is_repeat:
+            score += 1
+            
+        # usage weight
+        times_used = t["times_used"] or 0
+        score += min(times_used / 10.0, 3)
+        
+        # base percentage mapping
+        match_score = min(0.99, max(0.1, score / 10.0))
+        
+        reason = f"Based on {kw_matches} keyword matches and past usage ({times_used} times)."
+        if infra_type_code and infra_type_code in infra_codes:
+            reason = f"Strong structural match. " + reason
+            
+        return {
+            "template_id": str(t["id"]),
+            "match_score": match_score,
+            "match_reason": reason,
+            "recommended_priority": 1,
+            "_raw_score": score
+        }
 
-    prompt = f"""Select the TOP 3 most suitable workflow templates for this complaint.
-
-NEW COMPLAINT:
-  Summary:  {complaint_summary}
-  Infra:    {infra_type_code}
-  Priority: {priority}
-  Repeat:   {is_repeat}
-
-AVAILABLE TEMPLATES:
-{template_list}
-
-Return a JSON array (top 3 only):
-[
-  {{
-    "template_id": "<uuid from list>",
-    "match_score": 0.95,
-    "match_reason": "One sentence explaining why this fits",
-    "recommended_priority": 1
-  }}
-]"""
-
-    suggestions = []
-    try:
-        suggestions = _parse_json(_call_gemini_json(prompt))
-        if not isinstance(suggestions, list):
-            suggestions = []
-    except Exception as exc:
-        logger.error("Workflow suggestion Gemini failed: %s", exc)
-        suggestions = [
-            {"template_id": str(c["id"]), "match_score": 0.7,
-             "match_reason": "Most frequently used template", "recommended_priority": i + 1}
-            for i, c in enumerate(candidates[:3])
-        ]
+    scored_candidates = [score_template(c) for c in candidates]
+    scored_candidates.sort(key=lambda x: x["_raw_score"], reverse=True)
+    
+    suggestions = scored_candidates[:3]
 
     result = []
     for s in suggestions[:3]:

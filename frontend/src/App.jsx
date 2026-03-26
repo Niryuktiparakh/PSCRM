@@ -19,7 +19,7 @@ import SurveyPage           from "./pages/SurveyPage";
 // Role-specific dashboards
 import OfficialDashboardPage from "./pages/admin/OfficialDashboardPage";
 import AdminDashboardPage    from "./pages/admin/AdminDashboardPage";
-import WorkerDashboardPage   from "./pages/admin/WorkerDashboardPage";   // note: lives in pages/ not pages/admin/
+import WorkerDashboardPage   from "./pages/admin/WorkerDashboardPage";   
 import UserManagementPage    from "./pages/admin/UserManagementPage";
 
 // ── Auth guard ────────────────────────────────────────────────────

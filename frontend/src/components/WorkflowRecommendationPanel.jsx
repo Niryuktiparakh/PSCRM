@@ -1,68 +1,78 @@
 import React from "react";
-import { CheckCircle2, FileWarning, Layers } from "lucide-react";
 
 export default function WorkflowRecommendationPanel({ suggestions = [], onApprove, onCompare }) {
   if (!Array.isArray(suggestions) || suggestions.length === 0) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+      <section className="rounded-2xl p-4 text-sm text-slate-500"
+        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
         No recommendations available yet.
       </section>
     );
   }
 
   return (
-    <section className="space-y-3">
+    <section className="flex flex-col gap-3">
       {suggestions.map((item, idx) => {
         const score = Number(item.confidence_score ?? item.match_score ?? 0);
         const steps = item.steps_count ?? item.step_count ?? item.total_steps;
 
         return (
-          <article key={item.version_id || item.template_id || idx} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <article key={item.version_id || item.template_id || idx}
+            className="rounded-2xl p-4"
+            style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.08)" }}>
+
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">{item.template_name || "Workflow Template"}</h3>
-                <p className="text-xs text-slate-500">Version: {item.version || item.version_number || "-"}</p>
+                <h3 className="text-sm font-semibold text-white">{item.template_name || "Workflow Template"}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Version: {item.version || item.version_number || "-"}</p>
               </div>
-              <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+              <span className="rounded-full px-2 py-1 text-xs font-bold whitespace-nowrap"
+                style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}>
                 {(score * 100).toFixed(0)}% match
               </span>
             </div>
 
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded bg-slate-50 p-2 text-slate-700">
-                <p className="mb-1 text-slate-500">Estimated Duration</p>
-                <p className="font-semibold">{item.estimated_duration_days ?? item.estimated_days ?? "-"} days</p>
+              <div className="rounded-xl p-2"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-slate-500 mb-1">Estimated Duration</p>
+                <p className="font-semibold text-slate-300">{item.estimated_duration_days ?? item.estimated_days ?? "-"} days</p>
               </div>
-              <div className="rounded bg-slate-50 p-2 text-slate-700">
-                <p className="mb-1 text-slate-500">Steps</p>
-                <p className="inline-flex items-center gap-1 font-semibold">
-                  <Layers size={12} /> {steps ?? "-"}
+              <div className="rounded-xl p-2"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-slate-500 mb-1">Steps</p>
+                <p className="font-semibold text-slate-300 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px] text-slate-400">layers</span>
+                  {steps ?? "-"}
                 </p>
               </div>
             </div>
 
-            {item.risk_note || item.alert_reason ? (
-              <div className="mb-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-                <p className="inline-flex items-center gap-1 font-medium">
-                  <FileWarning size={12} /> Risk Note
+            {(item.risk_note || item.alert_reason) && (
+              <div className="mb-3 rounded-xl p-2.5 text-xs"
+                style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)" }}>
+                <p className="flex items-center gap-1 font-semibold text-amber-400">
+                  <span className="material-symbols-outlined text-[12px]">warning</span>
+                  Risk Note
                 </p>
-                <p className="mt-1">{item.risk_note || item.alert_reason}</p>
+                <p className="mt-1 text-amber-200/70">{item.risk_note || item.alert_reason}</p>
               </div>
-            ) : null}
+            )}
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700"
-                onClick={() => onApprove?.(item)}
-              >
-                <CheckCircle2 size={14} /> Approve
+              <button type="button" onClick={() => onApprove?.(item)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-colors"
+                style={{ background: "rgba(56,189,248,0.2)", border: "1px solid rgba(56,189,248,0.3)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(56,189,248,0.3)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(56,189,248,0.2)"}>
+                <span className="material-symbols-outlined text-[14px] text-sky-400">check_circle</span>
+                Approve
               </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                onClick={() => onCompare?.(item)}
-              >
+              <button type="button" onClick={() => onCompare?.(item)}
+                className="px-3 py-2 rounded-xl text-xs font-bold text-slate-400 transition-colors"
+                style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                onMouseLeave={e => e.currentTarget.style.background = ""}>
                 Compare
               </button>
             </div>

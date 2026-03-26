@@ -2,37 +2,30 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signup } from "../api/authApi";
 import { toast } from "sonner";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Button } from "../components/ui/button";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const [fullName, setFullName]   = useState("");
-  const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState("");
-  const [cityCode, setCityCode]   = useState("DEL");
-  const [loading, setLoading]     = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [cityCode, setCityCode] = useState("DEL");
+  const [loading, setLoading]   = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
-
     try {
       const data = await signup({
-        full_name:          fullName,
+        full_name: fullName,
         email,
         password,
-        city_code:          cityCode,
+        city_code: cityCode,
         preferred_language: "hi",
       });
-
-      // data.user_id, data.role etc. — no access_token needed anymore,
-      // client.js gets a fresh Firebase token on every request automatically
       localStorage.setItem("auth_user", JSON.stringify(data));
       navigate("/submit");
     } catch (err) {
-      // Firebase-specific error codes
       if (err.code === "auth/email-already-in-use") {
         toast.error("This email is already registered. Please sign in.");
       } else if (err.code === "auth/weak-password") {
@@ -40,7 +33,6 @@ export default function SignupPage() {
       } else if (err.code === "auth/invalid-email") {
         toast.error("Please enter a valid email address.");
       } else {
-        // Backend errors (409 duplicate, 400 bad city, etc.)
         toast.error(err.response?.data?.detail || err.message || "Signup failed.");
       }
     } finally {
@@ -49,145 +41,136 @@ export default function SignupPage() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col md:flex-row bg-surface font-body text-on-surface">
-      {/* LEFT COLUMN: SIGNUP FORM */}
-      <section className="w-full md:w-[55%] bg-surface-container-lowest flex flex-col p-8 md:p-16">
-        {/* Brand Anchor */}
-        <div className="flex items-center gap-1.5 mb-16">
-          <span className="font-headline font-extrabold text-[20px] text-on-background tracking-tight">
-            PS-CRM
-          </span>
-          <div className="w-1.5 h-1.5 rounded-full bg-primary-container" />
+    <main className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Ambient glows */}
+      <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%)" }} />
+      <div className="absolute bottom-1/4 right-1/3 w-80 h-80 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(129,140,248,0.08) 0%, transparent 70%)" }} />
+
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+            style={{ background: "linear-gradient(135deg,rgba(56,189,248,0.2),rgba(129,140,248,0.15))", border: "1px solid rgba(56,189,248,0.25)" }}>
+            <span className="material-symbols-outlined text-[28px] text-sky-400">location_city</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white">PS-CRM Delhi</h1>
+          <p className="text-slate-400 text-sm mt-1">Public Service Command Center</p>
         </div>
 
-        {/* Signup Content */}
-        <div className="max-w-[400px] w-full mx-auto my-auto">
-          <header className="mb-10">
-            <h1 className="font-headline font-bold text-[32px] text-on-background leading-tight mb-3">
-              Create account
-            </h1>
-            <p className="text-[16px] text-on-surface-variant font-normal">
-              Join Delhi's civic grievance network
-            </p>
-          </header>
+        {/* Card */}
+        <div className="gcard p-8">
+          <h2 className="text-xl font-bold text-white mb-1">Create account</h2>
+          <p className="text-slate-400 text-sm mb-6">Join Delhi's civic grievance network</p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Full Name</label>
+              <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
                 placeholder="Rahul Kumar"
+                className="w-full px-4 py-2.5 rounded-xl text-sm ginput"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Email</label>
+              <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="rahul.kumar@example.com"
+                placeholder="you@ndmc.gov.in"
+                className="w-full px-4 py-2.5 rounded-xl text-sm ginput"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="cityCode">City Code</Label>
-              <Input
-                id="cityCode"
+            {/* City Code */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">City Code</label>
+              <input
                 value={cityCode}
                 onChange={(e) => setCityCode(e.target.value.toUpperCase())}
                 required
                 placeholder="DEL"
+                className="w-full px-4 py-2.5 rounded-xl text-sm ginput"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="signupPassword">Password</Label>
-              <Input
-                id="signupPassword"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                placeholder="Min 8 characters"
-              />
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</label>
+              <div className="relative">
+                <input
+                  type={showPass ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  placeholder="Min 8 characters"
+                  className="w-full px-4 py-2.5 pr-12 rounded-xl text-sm ginput"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {showPass ? "visibility_off" : "visibility"}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <Button
+            <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 group mt-4 h-12"
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white gbtn-sky disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
-              <span>{loading ? "Creating..." : "Create Account"}</span>
-              {!loading && (
-                <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">
-                  arrow_forward
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                  Creating account…
                 </span>
-              )}
-            </Button>
+              ) : "Create Account"}
+            </button>
           </form>
 
-          <p className="text-center text-sm text-on-surface-variant mt-6">
+          <p className="text-center text-sm text-slate-500 mt-5">
             Already have an account?{" "}
-            <Link to="/login" className="text-primary font-semibold hover:underline">
+            <Link to="/login" className="text-sky-400 hover:text-sky-300 font-medium transition-colors">
               Sign in
             </Link>
           </p>
-
-          <footer className="mt-16 flex items-center gap-2 text-[12px] text-outline/60 font-medium">
-            <span className="material-symbols-outlined text-[14px]">verified_user</span>
-            <span>Secured by Bhashini · Delhi Municipal Services</span>
-          </footer>
         </div>
-      </section>
 
-      {/* RIGHT COLUMN: VISUAL CONTEXT (45%) */}
-      <section className="hidden md:flex md:w-[45%] bg-[#f0f9ff] relative overflow-hidden flex-col items-center justify-center p-12 bg-delhi-pattern">
-        <div className="relative z-10 w-full max-w-md flex flex-col items-center text-center">
-          <div className="w-full aspect-video mb-12 flex items-end justify-center">
-            <div className="w-full h-full flex items-center justify-center opacity-40">
-              <span className="material-symbols-outlined text-primary text-[120px]">
-                location_city
-              </span>
-            </div>
-          </div>
-          <div className="mb-12">
-            <h2 className="font-headline font-bold text-[28px] text-on-background mb-2">PS-CRM</h2>
-            <p className="text-[14px] text-primary font-medium tracking-wide">
-              Smart Civic Intelligence for Delhi
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 w-full">
-            <div className="flex items-center justify-between p-5 bg-surface-container-lowest rounded-xl shadow-[0_10px_30px_rgba(0,102,138,0.04)] border border-white/50 backdrop-blur-sm">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-tertiary-container/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-tertiary">check_circle</span>
-                </div>
-                <span className="text-[14px] font-semibold text-on-surface">Resolved Cases</span>
+        {/* Stats strip */}
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          {[
+            { icon: "check_circle", label: "Resolved Cases", value: "12,400+" },
+            { icon: "speed",        label: "Avg SLA",         value: "41 Days" },
+          ].map(s => (
+            <div key={s.label} className="rounded-2xl p-4 flex items-center gap-3"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="material-symbols-outlined text-sky-400 text-[20px]">{s.icon}</span>
+              <div>
+                <p className="text-sm font-bold text-white">{s.value}</p>
+                <p className="text-[11px] text-slate-500">{s.label}</p>
               </div>
-              <span className="font-mono text-lg font-bold text-tertiary">12,400+</span>
             </div>
-            <div className="flex items-center justify-between p-5 bg-surface-container-lowest rounded-xl shadow-[0_10px_30px_rgba(0,102,138,0.04)] border border-white/50 backdrop-blur-sm">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-secondary-container/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-secondary">speed</span>
-                </div>
-                <span className="text-[14px] font-semibold text-on-surface">Average SLA</span>
-              </div>
-              <span className="font-mono text-lg font-bold text-secondary">41-Day</span>
-            </div>
-          </div>
+          ))}
         </div>
-        <div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-primary-container/10 rounded-full blur-[100px]" />
-        <div className="absolute bottom-[-5%] left-[-5%] w-80 h-80 bg-secondary-container/5 rounded-full blur-[120px]" />
-      </section>
+
+        <p className="text-center text-xs text-slate-700 mt-6">
+          © 2025 NDMC · Delhi Municipal CRM
+        </p>
+      </div>
     </main>
   );
 }

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from dependencies import get_current_user
 from schemas import TokenData
+from services.complaint_cluster_service import get_cluster_for_node
 
 router = APIRouter(prefix="/infra", tags=["Infra"])
 
@@ -237,6 +238,9 @@ def get_infra_nodes_map(
                 it.code AS infra_type_code,
                 it.name AS infra_type_name,
                 n.total_complaint_count,
+                n.cluster_ai_summary,
+                n.cluster_severity,
+                n.cluster_major_themes,
                 (
                     SELECT COUNT(*)
                     FROM complaints c2
@@ -281,6 +285,9 @@ def get_infra_nodes_map(
                 "open_complaint_count": int(r["open_complaint_count"] or 0),
                 "is_repeat_risk": bool(r["is_repeat_risk"]),
                 "health_score": float(r["health_score"]) if r["health_score"] is not None else None,
+                "cluster_ai_summary": r["cluster_ai_summary"],
+                "cluster_severity": r["cluster_severity"],
+                "cluster_major_themes": r["cluster_major_themes"] or [],
             },
         }
         for r in rows
@@ -535,3 +542,20 @@ def create_or_match_node(
         "matched": False,
         "node_id": str(created["id"]),
     }
+
+
+@router.get("/nodes/{node_id}/cluster")
+def get_node_cluster(
+    node_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """
+    Returns the complaint cluster for an infra node — all grouped complaints
+    with their summaries so the official gets the full picture.
+    """
+    _require(current_user, ADMIN_ROLES)
+    cluster = get_cluster_for_node(db, str(node_id))
+    if not cluster:
+        return {"cluster_id": None, "complaint_count": 0, "cluster_summary": None, "members": []}
+    return cluster

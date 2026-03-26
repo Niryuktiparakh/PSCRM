@@ -676,6 +676,7 @@ def get_workflow_suggestions(
         text("""
             SELECT c.id, c.city_id, c.agent_summary, c.title, c.description,
                    c.infra_node_id, c.agent_suggested_dept_ids,
+                   c.priority, c.is_repeat_complaint,
                    it.code AS infra_type_code
             FROM complaints c
             LEFT JOIN infra_nodes n  ON n.id  = c.infra_node_id
@@ -688,14 +689,15 @@ def get_workflow_suggestions(
     if not c:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    summary = c["agent_summary"] or f"{c['title']}. {c['description']}"
+    summary = c["agent_summary"] or f"{c['title']}. {c['description'][:500]}"
     result  = suggest_workflows(
         db,
         complaint_id=str(complaint_id),
         city_id=str(c["city_id"]),
-        situation_text=summary,
-        infra_type_code=c["infra_type_code"],
-        dept_ids=[str(d) for d in (c["agent_suggested_dept_ids"] or [])],
+        infra_type_code=c["infra_type_code"] or "GENERAL",
+        complaint_summary=summary,
+        priority=c["priority"] or "normal",
+        is_repeat=bool(c["is_repeat_complaint"]),
     )
     return result
 
@@ -737,8 +739,7 @@ def approve_workflow(
         complaint_id=str(complaint_id),
         city_id=str(c["city_id"]),
         template_id=body.template_id,
-        version_id=body.version_id,
-        approved_by=str(current_user.user_id),
+        official_id=str(current_user.user_id),
         edited_steps=body.edited_steps,
         edit_reason=body.edit_reason,
     )
@@ -1143,8 +1144,10 @@ def get_infra_node_summary(
     node = db.execute(
         text("""
             SELECT n.id, n.status, n.total_complaint_count, n.total_resolved_count,
-                   n.last_resolved_at, n.cluster_radius_meters, n.repeat_alert_years,
+                   n.last_resolved_at, n.cluster_ai_summary, n.cluster_major_themes,
+                   n.cluster_severity, n.cluster_summary_at,
                    it.name AS infra_type_name, it.code AS infra_type_code,
+                   it.cluster_radius_meters, it.repeat_alert_years,
                    ST_Y(n.location::geometry) AS lat, ST_X(n.location::geometry) AS lng,
                    j.name AS jurisdiction_name
             FROM infra_nodes n
@@ -1248,9 +1251,12 @@ def get_infra_node_ai_summary(
     node = db.execute(
         text("""
             SELECT n.id, n.status, n.total_complaint_count, n.total_resolved_count,
-                   n.last_resolved_at, n.repeat_alert_years,
+                   n.last_resolved_at,
+                   it.repeat_alert_years,
                    it.name AS infra_type_name, it.code AS infra_type_code,
-                   j.name AS jurisdiction_name
+                   it.cluster_radius_meters,
+                   j.name AS jurisdiction_name,
+                   n.cluster_ai_summary, n.cluster_major_themes, n.cluster_severity
             FROM infra_nodes n
             JOIN infra_types it ON it.id = n.infra_type_id
             LEFT JOIN jurisdictions j ON j.id = n.jurisdiction_id

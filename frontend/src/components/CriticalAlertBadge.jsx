@@ -1,42 +1,46 @@
 import React from "react";
-import { AlertOctagon, Clock3, Hammer } from "lucide-react";
 
 export default function CriticalAlertBadge({ alert, onView }) {
   if (!alert) return null;
 
   return (
-    <article className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+    <article className="rounded-2xl p-4"
+      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)" }}>
+
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <AlertOctagon className="text-rose-600" size={16} />
-          <p className="text-sm font-semibold text-rose-800">Warranty/Repeat Alert</p>
+          <span className="material-symbols-outlined text-red-400 text-[18px]">warning</span>
+          <p className="text-sm font-semibold text-red-300">Warranty/Repeat Alert</p>
         </div>
-        {alert.liability_contractor_flag || alert.liable_contractor_flag ? (
-          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+        {(alert.liability_contractor_flag || alert.liable_contractor_flag) && (
+          <span className="rounded-full px-2 py-1 text-[10px] font-bold"
+            style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>
             Contractor Liable
           </span>
-        ) : null}
+        )}
       </div>
 
-      <p className="text-sm font-medium text-gray-900">{alert.infra_type_name || "Infrastructure Node"}</p>
-      <p className="text-xs text-gray-600">Complaint: {alert.complaint_number || "-"}</p>
+      <p className="text-sm font-semibold text-white">{alert.infra_type_name || "Infrastructure Node"}</p>
+      <p className="text-xs text-slate-400 mt-0.5">Complaint: {alert.complaint_number || "-"}</p>
 
-      <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-700">
-        <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-1">
-          <Clock3 size={12} />
+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <span className="flex items-center gap-1 px-2 py-1 rounded-lg"
+          style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>
+          <span className="material-symbols-outlined text-[12px]">schedule</span>
           {alert.days_since_resolution ?? "-"} days since last resolution
         </span>
-        <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-1">
-          <Hammer size={12} />
+        <span className="flex items-center gap-1 px-2 py-1 rounded-lg"
+          style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}>
+          <span className="material-symbols-outlined text-[12px]">construction</span>
           {alert.liable_contractor || "No contractor mapped"}
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onView?.(alert)}
-        className="mt-3 w-full rounded-lg bg-rose-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-rose-600"
-      >
+      <button type="button" onClick={() => onView?.(alert)}
+        className="mt-3 w-full rounded-xl py-2.5 text-sm font-bold text-white transition-all"
+        style={{ background: "rgba(239,68,68,0.3)", border: "1px solid rgba(239,68,68,0.4)" }}
+        onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.4)"}
+        onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.3)"}>
         View Alert Details
       </button>
     </article>

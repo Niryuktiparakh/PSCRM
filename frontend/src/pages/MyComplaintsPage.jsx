@@ -3,52 +3,47 @@ import { Link, useNavigate } from "react-router-dom";
 import AppLayout from "../components/AppLayout";
 import { fetchMyComplaints, fetchMyStats } from "../api/complaintsApi";
 import { toast } from "sonner";
-import { Card, CardContent } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Badge } from "../components/ui/badge";
 
 const STATUS_LABEL = {
-  received: "Received",
-  clustered: "Clustered",
-  mapped: "Mapped",
-  workflow_started: "Workflow Started",
-  in_progress: "In Progress",
-  midway_survey_sent: "Survey Sent",
-  resolved: "Resolved",
-  closed: "Closed",
-  rejected: "Rejected",
-  escalated: "Escalated",
-  emergency: "Emergency",
-  constraint_blocked: "Blocked",
+  received:            "Received",
+  clustered:           "Clustered",
+  mapped:              "Mapped",
+  workflow_started:    "Workflow Started",
+  in_progress:         "In Progress",
+  midway_survey_sent:  "Survey Sent",
+  resolved:            "Resolved",
+  closed:              "Closed",
+  rejected:            "Rejected",
+  escalated:           "Escalated",
+  emergency:           "Emergency",
+  constraint_blocked:  "Blocked",
 };
 
-const STATUS_COLOR = {
-  received: "text-purple-600 bg-purple-50",
-  clustered: "text-purple-600 bg-purple-50",
-  mapped: "text-blue-600 bg-blue-50",
-  workflow_started: "text-blue-600 bg-blue-50",
-  in_progress: "text-orange-600 bg-orange-50",
-  midway_survey_sent: "text-orange-600 bg-orange-50",
-  resolved: "text-green-600 bg-green-50",
-  closed: "text-green-600 bg-green-50",
-  rejected: "text-red-600 bg-red-50",
-  escalated: "text-red-600 bg-red-50",
-  emergency: "text-red-700 bg-red-100",
-  constraint_blocked: "text-amber-700 bg-amber-50",
+const STATUS_STYLE = {
+  received:           { bg: "rgba(139,92,246,0.15)", color: "#a78bfa" },
+  clustered:          { bg: "rgba(139,92,246,0.15)", color: "#a78bfa" },
+  mapped:             { bg: "rgba(56,189,248,0.12)",  color: "#38bdf8" },
+  workflow_started:   { bg: "rgba(56,189,248,0.12)",  color: "#38bdf8" },
+  in_progress:        { bg: "rgba(251,146,60,0.12)",  color: "#fb923c" },
+  midway_survey_sent: { bg: "rgba(251,146,60,0.12)",  color: "#fb923c" },
+  resolved:           { bg: "rgba(52,211,153,0.12)",  color: "#34d399" },
+  closed:             { bg: "rgba(52,211,153,0.12)",  color: "#34d399" },
+  rejected:           { bg: "rgba(248,113,113,0.12)", color: "#f87171" },
+  escalated:          { bg: "rgba(248,113,113,0.12)", color: "#f87171" },
+  emergency:          { bg: "rgba(248,113,113,0.2)",  color: "#ef4444" },
+  constraint_blocked: { bg: "rgba(251,191,36,0.12)",  color: "#fbbf24" },
 };
 
 const PRIORITY_COLOR = {
-  low: "text-slate-500",
-  normal: "text-blue-500",
-  high: "text-orange-500",
-  critical: "text-red-600",
-  emergency: "text-red-800 font-bold",
+  low:       "#64748b",
+  normal:    "#38bdf8",
+  high:      "#fb923c",
+  critical:  "#f87171",
+  emergency: "#ef4444",
 };
 
 const STATUS_OPTIONS = [
-  "All",
-  "received", "in_progress", "resolved", "closed", "rejected", "escalated",
+  "All", "received", "in_progress", "resolved", "closed", "rejected", "escalated",
 ];
 
 function formatDate(iso) {
@@ -58,14 +53,22 @@ function formatDate(iso) {
   });
 }
 
+function StatusPill({ status }) {
+  const s = STATUS_STYLE[status] || { bg: "rgba(0,0,0,0.06)", color: "#64748b" };
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase"
+      style={{ background: s.bg, color: s.color }}>
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
+}
+
 export default function MyComplaintsPage() {
   const navigate = useNavigate();
-
   const [complaints, setComplaints] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const [search, setSearch] = useState("");
+  const [stats, setStats]           = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
@@ -78,7 +81,7 @@ export default function MyComplaintsPage() {
         ]);
         setComplaints(listRes.items || []);
         setStats(statsRes);
-      } catch (e) {
+      } catch {
         toast.error("Failed to load complaints.");
       } finally {
         setLoading(false);
@@ -87,7 +90,6 @@ export default function MyComplaintsPage() {
     load();
   }, []);
 
-  // Client-side filtering
   const filtered = complaints.filter((c) => {
     const matchStatus = statusFilter === "All" || c.status === statusFilter;
     const q = search.toLowerCase();
@@ -104,10 +106,10 @@ export default function MyComplaintsPage() {
       <div className="p-6 flex flex-col gap-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-headline font-bold text-on-surface">My Complaints</h1>
+          <h1 className="text-2xl font-bold text-slate-800">My Complaints</h1>
           <Link
             to="/submit"
-            className="bg-primary text-on-primary px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-primary/90 transition flex items-center gap-2"
+            className="gbtn-sky px-5 py-2.5 rounded-full text-sm font-semibold text-white flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-[18px]">add</span>
             New Report
@@ -117,27 +119,16 @@ export default function MyComplaintsPage() {
         {/* Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Total", value: stats?.total_count, icon: "receipt_long" },
-            { label: "Active", value: stats?.active_count, icon: "pending" },
-            { label: "Resolved", value: stats?.resolved_count, icon: "check_circle" },
-            {
-              label: "Avg Days",
-              value: stats?.avg_resolution_days != null
-                ? stats.avg_resolution_days.toFixed(1)
-                : null,
-              icon: "schedule",
-            },
+            { label: "Total",    value: stats?.total_count,           icon: "receipt_long", color: "#38bdf8" },
+            { label: "Active",   value: stats?.active_count,          icon: "pending",       color: "#fb923c" },
+            { label: "Resolved", value: stats?.resolved_count,        icon: "check_circle",  color: "#34d399" },
+            { label: "Avg Days", value: stats?.avg_resolution_days != null ? stats.avg_resolution_days.toFixed(1) : null, icon: "schedule", color: "#a78bfa" },
           ].map((s) => (
-            <div
-              key={s.label}
-              className="bg-surface-container-low border border-outline-variant rounded-2xl p-4 flex items-center gap-3"
-            >
-              <span className="material-symbols-outlined text-primary text-[24px]">{s.icon}</span>
+            <div key={s.label} className="gcard p-4 flex items-center gap-3">
+              <span className="material-symbols-outlined text-[24px]" style={{ color: s.color }}>{s.icon}</span>
               <div>
-                <p className="text-xl font-headline font-bold text-on-surface">
-                  {loading ? "…" : (s.value ?? "—")}
-                </p>
-                <p className="text-xs text-on-surface-variant">{s.label}</p>
+                <p className="text-xl font-bold text-slate-800">{loading ? "…" : (s.value ?? "—")}</p>
+                <p className="text-xs text-slate-500">{s.label}</p>
               </div>
             </div>
           ))}
@@ -145,21 +136,20 @@ export default function MyComplaintsPage() {
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center gap-2 bg-surface-container border border-outline-variant rounded-xl px-3 py-2 flex-1">
-            <span className="material-symbols-outlined text-on-surface-variant text-[20px]">
-              search
-            </span>
+          <div className="flex items-center gap-2 flex-1 rounded-xl px-3 py-2"
+            style={{ background: "rgba(255,255,255,0.8)", border: "1px solid rgba(0,0,0,0.08)" }}>
+            <span className="material-symbols-outlined text-slate-500 text-[20px]">search</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by title, number, or address…"
-              className="bg-transparent text-sm text-on-surface placeholder:text-on-surface-variant outline-none flex-1"
+              className="bg-transparent text-sm text-slate-800 placeholder:text-slate-400 outline-none flex-1"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-surface-container border border-outline-variant rounded-xl px-3 py-2 text-sm text-on-surface outline-none"
+            className="ginput px-3 py-2 text-sm rounded-xl"
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -170,16 +160,17 @@ export default function MyComplaintsPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-surface-container-low border border-outline-variant rounded-2xl overflow-hidden">
+        <div className="gcard overflow-hidden">
           {loading ? (
             <div className="flex flex-col gap-2 p-4">
               {[1, 2, 3, 4].map((n) => (
-                <div key={n} className="h-14 rounded-xl bg-outline-variant/30 animate-pulse" />
+                <div key={n} className="h-14 rounded-xl animate-pulse"
+                  style={{ background: "rgba(0,0,0,0.06)" }} />
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-on-surface-variant">
-              <span className="material-symbols-outlined text-5xl mb-2">inbox</span>
+            <div className="text-center py-16 text-slate-500">
+              <span className="material-symbols-outlined text-5xl mb-2 block">inbox</span>
               <p className="text-sm">
                 {complaints.length === 0
                   ? "No complaints filed yet."
@@ -189,71 +180,56 @@ export default function MyComplaintsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-surface-container border-b border-outline-variant">
+                <thead style={{ background: "rgba(0,0,0,0.04)", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                   <tr>
-                    {["#", "Title", "Address", "Status", "Priority", "Filed", "Resolved", ""].map(
-                      (h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-left text-xs font-semibold text-on-surface-variant"
-                        >
-                          {h}
-                        </th>
-                      )
-                    )}
+                    {["#", "Title", "Address", "Status", "Priority", "Filed", "Resolved", ""].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-outline-variant">
+                <tbody>
                   {filtered.map((c) => (
                     <tr
                       key={c.id}
-                      className="hover:bg-surface-container-high transition cursor-pointer"
+                      className="cursor-pointer transition-colors"
+                      style={{ borderBottom: "1px solid rgba(0,0,0,0.05)" }}
                       onClick={() => navigate(`/complaints/${c.id}`)}
+                      onMouseEnter={e => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
+                      onMouseLeave={e => e.currentTarget.style.background = ""}
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-on-surface-variant whitespace-nowrap">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">
                         {c.complaint_number}
                       </td>
-                      <td className="px-4 py-3 max-w-[200px]">
-                        <p className="truncate font-medium text-on-surface">{c.title}</p>
+                      <td className="px-4 py-3 max-w-50">
+                        <p className="truncate font-medium text-slate-800">{c.title}</p>
                         {c.is_repeat_complaint && (
-                          <span className="text-xs text-red-600 font-semibold">Repeat complaint</span>
+                          <span className="text-[10px] text-red-400 font-semibold">Repeat complaint</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 max-w-[160px]">
-                        <p className="truncate text-on-surface-variant">
-                          {c.address_text || "—"}
-                        </p>
+                      <td className="px-4 py-3 max-w-40">
+                        <p className="truncate text-slate-500">{c.address_text || "—"}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge
-                          variant="outline"
-                          className={`uppercase text-[10px] ${
-                            STATUS_COLOR[c.status] || "text-gray-600 bg-gray-50 border-gray-200"
-                          }`}
-                        >
-                          {STATUS_LABEL[c.status] || c.status}
-                        </Badge>
+                        <StatusPill status={c.status} />
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`text-xs capitalize ${PRIORITY_COLOR[c.priority] || ""}`}
-                        >
+                        <span className="text-xs capitalize font-medium"
+                          style={{ color: PRIORITY_COLOR[c.priority] || "#94a3b8" }}>
                           {c.priority}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-on-surface-variant whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                         {formatDate(c.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-xs text-on-surface-variant whitespace-nowrap">
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                         {c.resolved_at ? formatDate(c.resolved_at) : "—"}
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          className="text-primary text-xs hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/complaints/${c.id}`);
-                          }}
+                          className="text-sky-400 text-xs hover:text-sky-300 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/complaints/${c.id}`); }}
                         >
                           View →
                         </button>
@@ -267,7 +243,7 @@ export default function MyComplaintsPage() {
         </div>
 
         {!loading && (
-          <p className="text-xs text-on-surface-variant text-right">
+          <p className="text-xs text-slate-600 text-right">
             Showing {filtered.length} of {complaints.length} complaints
           </p>
         )}

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from models import City, User
 from schemas import ComplaintIngestRequest, ComplaintIngestResponse, TokenData
 from services.complaint_service import (
     get_complaint_by_id as get_complaint_by_id_service,
-    ingest_complaint as ingest_complaint_service,
+    ingest_complaint_fast as ingest_complaint_service,
 )
 from services.mapping_service import infer_infra_type, ensure_infra_type
 from services.storage_service import generate_signed_upload_url
@@ -377,6 +377,7 @@ def get_complaint_by_id(
 
 @router.post("/ingest", response_model=ComplaintIngestResponse)
 async def ingest_complaint(
+    background_tasks: BackgroundTasks,
     title:                    Optional[str]        = Form(default=None),
     text:                     Optional[str]        = Form(default=None),
     description:              Optional[str]        = Form(default=None),
@@ -400,6 +401,7 @@ async def ingest_complaint(
     images:                   List[UploadFile]     = File(default=[]),
     image:                    Optional[UploadFile] = File(default=None),
     voice_recording:          Optional[UploadFile] = File(default=None),
+    
     db: Session = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -541,7 +543,7 @@ async def ingest_complaint(
         voice_recording          = voice_recording,
     )
 
-    return await ingest_complaint_service(db, request)
+    return await ingest_complaint_service(db, request, background_tasks)
 
 
 # ── 9. Signed upload URL ──────────────────────────────────────────

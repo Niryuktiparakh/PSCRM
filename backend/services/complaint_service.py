@@ -6,16 +6,18 @@ import logging
 from typing import Dict, Iterable, List, Optional
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from google import genai
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from config import settings
+from db import SessionLocal
 from schemas import ComplaintIngestRequest, ComplaintIngestResponse
 from services.embedding_service import create_complaint_embeddings
 from services.geocoding_service import reverse_geocode
 from services.mapping_service import map_complaint_to_departments
+from services.complaint_cluster_service import upsert_complaint_cluster
 from services.pubsub_service import publish_complaint_received
 from services.storage_service import save_embedding_artifact, save_upload
 
@@ -100,6 +102,82 @@ def _insert_domain_event(
             "payload":      json.dumps(payload),
         },
     )
+
+
+def _process_embeddings_background(complaint_id: str, text_value: str, image_path: Optional[str]):
+    """Background task to generate and store embeddings."""
+    db = SessionLocal()
+    try:
+        embeddings = create_complaint_embeddings(text_value, image_path)
+        db.execute(
+            text("""
+                UPDATE complaint_embeddings
+                SET text_embedding = CAST(:te AS vector(768)),
+                    image_embedding = CAST(:ie AS vector(768)),
+                    updated_at = NOW()
+                WHERE complaint_id = CAST(:cid AS uuid)
+            """),
+            {
+                "cid": complaint_id,
+                "te": _vector_literal(embeddings.get("text_embedding")),
+                "ie": _vector_literal(embeddings.get("image_embedding")),
+            },
+        )
+        db.commit()
+        logger.info("Background embeddings completed for %s", complaint_id)
+    except Exception as exc:
+        logger.error("Background embedding failed for %s: %s", complaint_id, exc)
+    finally:
+        db.close()
+
+
+def _process_mapping_background(
+    complaint_id: str,
+    city_id: str,
+    title: str,
+    description: str,
+    infra_type_id: str,
+    infra_type_code: str,
+    infra_type_name: str,
+    infra_node_id: str,
+    jurisdiction_name: Optional[str],
+    lat: float,
+    lng: float,
+    address: Optional[str],
+):
+    """Background task to run department mapping."""
+    db = SessionLocal()
+    try:
+        map_complaint_to_departments(
+            db,
+            complaint_id=complaint_id,
+            city_id=city_id,
+            title=title,
+            description=description,
+            infra_type_id=infra_type_id,
+            infra_type_code=infra_type_code,
+            infra_type_name=infra_type_name,
+            infra_node_id=infra_node_id,
+            jurisdiction_name=jurisdiction_name,
+            lat=lat,
+            lng=lng,
+            road_name=address,
+        )
+
+        db.execute(
+            text("""
+                UPDATE complaints
+                SET status = 'mapped', updated_at = NOW()
+                WHERE id = CAST(:cid AS uuid) AND status = 'received'
+            """),
+            {"cid": complaint_id},
+        )
+        db.commit()
+        logger.info("Background mapping completed for %s", complaint_id)
+    except Exception as exc:
+        logger.error("Background mapping failed for %s: %s", complaint_id, exc)
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -263,9 +341,10 @@ def get_complaint_by_id(
 # INGEST COMPLAINT  (main entry point)
 # ─────────────────────────────────────────────────────────────────
 
-async def ingest_complaint(
+async def ingest_complaint_fast(
     db: Session,
     request: ComplaintIngestRequest,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> ComplaintIngestResponse:
     """
     Full ingestion pipeline:
@@ -468,21 +547,45 @@ async def ingest_complaint(
         jurisdiction_name = jur_row["name"] if jur_row else None
 
     # ── 8. Department mapping (authority → Groq) ──────────────────
-    mapping_result = map_complaint_to_departments(
-        db,
-        complaint_id=complaint_id,
-        city_id=city_id,
-        title=request.title,
-        description=translated_description,
-        infra_type_id=str(request.infra_type_id),
-        infra_type_code=infra_type_code,
-        infra_type_name=infra_type_name,
-        infra_node_id=infra_node_id,
-        jurisdiction_name=jurisdiction_name,
-        lat=request.lat,
-        lng=request.lng,
-        road_name=resolved_address_text,
-    )
+    mapping_result = {"mappings": []}
+    if background_tasks is not None:
+        background_tasks.add_task(
+            _process_embeddings_background,
+            complaint_id,
+            translated_description,
+            primary_image_local_path,
+        )
+        background_tasks.add_task(
+            _process_mapping_background,
+            complaint_id,
+            city_id,
+            request.title,
+            translated_description,
+            str(request.infra_type_id),
+            infra_type_code,
+            infra_type_name,
+            infra_node_id,
+            jurisdiction_name,
+            request.lat,
+            request.lng,
+            resolved_address_text,
+        )
+    else:
+        mapping_result = map_complaint_to_departments(
+            db,
+            complaint_id=complaint_id,
+            city_id=city_id,
+            title=request.title,
+            description=translated_description,
+            infra_type_id=str(request.infra_type_id),
+            infra_type_code=infra_type_code,
+            infra_type_name=infra_type_name,
+            infra_node_id=infra_node_id,
+            jurisdiction_name=jurisdiction_name,
+            lat=request.lat,
+            lng=request.lng,
+            road_name=resolved_address_text,
+        )
 
     # ── 9. Save embedding artifact ────────────────────────────────
     save_embedding_artifact(
@@ -522,6 +625,26 @@ async def ingest_complaint(
     # ── 11. Commit ────────────────────────────────────────────────
     db.commit()
 
+    # ── Post-commit: cluster + AI summary (non-critical) ─────────
+    try:
+        upsert_complaint_cluster(
+            db,
+            infra_node_id=infra_node_id,
+            complaint_id=complaint_id,
+            complaint_title=request.title,
+            complaint_priority=request.priority or "normal",
+        )
+        db.commit()
+    except Exception as exc:
+        logger.warning("Cluster upsert failed (non-critical): %s", exc)
+
+    try:
+        from services.infra_node_service import update_infra_node_summary
+
+        update_infra_node_summary(db, infra_node_id)
+    except Exception as exc:
+        logger.warning("Node summary update failed (non-critical): %s", exc)
+
     logger.info(
         "Complaint ingested: id=%s number=%s authority=%s depts=%s address=%s",
         complaint_id,
@@ -541,3 +664,10 @@ async def ingest_complaint(
         repeat_gap_days=repeat_gap_days,
         jurisdiction_id=row["jurisdiction_id"],
     )
+
+
+async def ingest_complaint(
+    db: Session,
+    request: ComplaintIngestRequest,
+) -> ComplaintIngestResponse:
+    return await ingest_complaint_fast(db, request, background_tasks=None)
