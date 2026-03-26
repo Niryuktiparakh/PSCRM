@@ -261,14 +261,14 @@ export default function ComplaintStatusPage() {
         <div className="flex flex-col gap-5 lg:w-80">
           {/* SLA Ring */}
           <div className="gcard p-5">
-            <h2 className="font-semibold text-white mb-4 flex items-center gap-2">
+            <h2 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px] text-sky-400">timer</span>
               Delhi Mitra SLA ({SLA_DAYS} days)
             </h2>
             <div className="flex items-center gap-5">
               <div className="relative w-16 h-16 shrink-0">
                 <svg className="-rotate-90" width="64" height="64" viewBox="0 0 64 64">
-                  <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                  <circle cx="32" cy="32" r="24" fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="6" />
                   <circle
                     cx="32" cy="32" r="24" fill="none"
                     stroke={slaColor}
@@ -277,12 +277,12 @@ export default function ComplaintStatusPage() {
                     style={{ filter: `drop-shadow(0 0 6px ${slaColor}60)` }}
                   />
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold" style={{ color: slaColor }}>
                   {slaPercent}%
                 </span>
               </div>
               <div>
-                <p className="text-sm font-medium text-white">{slaLabel}</p>
+                <p className="text-sm font-medium text-slate-800">{slaLabel}</p>
                 <p className="text-xs text-slate-500 mt-1">
                   {isResolved ? "Complaint resolved" : `Filed ${formatDateTime(complaint.created_at)}`}
                 </p>
@@ -292,7 +292,7 @@ export default function ComplaintStatusPage() {
 
           {/* Timeline */}
           <div className="gcard p-5">
-            <h2 className="font-semibold text-white mb-4 flex items-center gap-2">
+            <h2 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px] text-sky-400">timeline</span>
               Activity Timeline
             </h2>
