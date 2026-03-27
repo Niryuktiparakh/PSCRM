@@ -23,6 +23,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 import vertexai
+from groq import Groq
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from vertexai.generative_models import (
@@ -36,6 +37,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 _vertex_initialized = False
+_groq_client: Optional[Groq] = None
 
 # Safety settings — civic infrastructure data (words like "damaged", "hazard",
 # "emergency", "broken pipe") triggers Vertex AI's DANGEROUS_CONTENT filter at
@@ -99,6 +101,44 @@ def _call_gemini(system: str, prompt: str, max_tokens: int = 4096, temperature: 
         return ""
 
 
+def _get_groq_client() -> Optional[Groq]:
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
+    api_key = getattr(settings, "GROQ_API_KEY", None)
+    if not api_key:
+        logger.warning("GROQ_API_KEY is not configured")
+        return None
+    try:
+        _groq_client = Groq(api_key=api_key)
+    except Exception as exc:
+        logger.error("Failed to initialize Groq client: %s", exc)
+        return None
+    return _groq_client
+
+
+def _call_groq_summary(system: str, prompt: str, max_tokens: int = 300, temperature: float = 0.3) -> str:
+    client = _get_groq_client()
+    if client is None:
+        return ""
+    try:
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if not response.choices:
+            return ""
+        return (response.choices[0].message.content or "").strip()
+    except Exception as exc:
+        logger.error("Groq summary call failed: %s", exc)
+        return ""
+
+
 def _generate_fallback_briefing(kpi: Dict[str, Any], scope: Dict[str, Any]) -> str:
     """Generate a simple text briefing when Gemini fails."""
     complaints = kpi.get("complaints", {})
@@ -121,6 +161,58 @@ def _generate_fallback_briefing(kpi: Dict[str, Any], scope: Dict[str, Any]) -> s
         "Focus on critical items and overdue tasks today.",
     ]
     return "\n".join(lines)
+
+
+def _enrich_query_data_for_chat(query_data: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+    """
+    Expand infra summary JSON into explicit fields so Gemini can reason over
+    stable keys (problems_reported, summary, recommended_action) instead of
+    a raw JSON string blob.
+    """
+    if not query_data:
+        return query_data
+
+    enriched: List[Dict[str, Any]] = []
+    for row in query_data:
+        item = dict(row)
+        raw_summary = item.get("cluster_ai_summary")
+        parsed_summary: Optional[Dict[str, Any]] = None
+
+        if isinstance(raw_summary, str) and raw_summary.strip().startswith("{"):
+            try:
+                maybe = json.loads(raw_summary)
+                if isinstance(maybe, dict):
+                    parsed_summary = maybe
+            except json.JSONDecodeError:
+                parsed_summary = None
+        elif isinstance(raw_summary, dict):
+            parsed_summary = raw_summary
+
+        if parsed_summary:
+            problems = parsed_summary.get("problems_reported")
+            if isinstance(problems, list):
+                item["infra_problems_reported"] = problems
+                item["infra_problem_count"] = len(problems)
+                actions = [
+                    str(p.get("recommended_action")).strip()
+                    for p in problems
+                    if isinstance(p, dict) and p.get("recommended_action")
+                ]
+                if actions:
+                    # De-duplicate while preserving order.
+                    item["infra_recommended_actions"] = list(dict.fromkeys(actions))
+
+            if parsed_summary.get("summary"):
+                item["infra_summary"] = parsed_summary.get("summary")
+            elif parsed_summary.get("brief"):
+                item["infra_summary"] = parsed_summary.get("brief")
+
+            if not item.get("cluster_severity") and parsed_summary.get("overall_severity"):
+                item["cluster_severity"] = parsed_summary.get("overall_severity")
+
+        enriched.append(item)
+
+    return enriched
 
 
 # ── Scope helper ──────────────────────────────────────────────────
@@ -354,8 +446,8 @@ def get_daily_briefing(db: Session, user_id: str, role: str) -> Dict[str, Any]:
                 for n in ctx.get("infra_alerts", [])
             ],
         }
-        raw = _call_gemini(
-            "You are PS-CRM, a concise municipal operations assistant for Delhi. Be direct and actionable. Plain text, no bullet points, no markdown.",
+        raw = _call_groq_summary(
+            "You are PS-CRM, a concise municipal operations assistant for Delhi. Be direct and actionable. Use neutral, professional wording. Plain text, no bullet points, no markdown.",
             f"Write a 3-4 sentence morning briefing for {ctx['user_name']} ({role}).\n\nDATA:\n{json.dumps(safe_ctx, default=str, indent=2)}",
             max_tokens=300, temperature=0.3,
         )
@@ -364,7 +456,7 @@ def get_daily_briefing(db: Session, user_id: str, role: str) -> Dict[str, Any]:
         else:
             greeting = _generate_fallback_briefing(ctx.get("kpi", {}), ctx.get("_scope", {}))
     except Exception as exc:
-        logger.error("Briefing Gemini failed: %s", exc)
+        logger.error("Briefing summary generation failed: %s", exc)
         greeting = _generate_fallback_briefing(ctx.get("kpi", {}), ctx.get("_scope", {}))
 
     sections = []
@@ -436,8 +528,9 @@ Rules:
     )
 
     db_section = ""
-    if query_data:
-        db_section = f"\nLIVE DB DATA:\n{json.dumps(query_data, default=str, indent=2)}\n"
+    query_data_for_llm = _enrich_query_data_for_chat(query_data)
+    if query_data_for_llm:
+        db_section = f"\nLIVE DB DATA:\n{json.dumps(query_data_for_llm, default=str, separators=(',', ':'))}\n"
 
     full_prompt = f"{history_str}{db_section}Official: {user_message}\nPS-CRM:"
 
